@@ -136,6 +136,18 @@ under the License.
 				</exclusion>
 			</exclusions>
 		</dependency>
+		
+		<dependency>
+  			<groupId>com.goldmansachs</groupId>
+  			<artifactId>gs-collections-api</artifactId>
+  			<version>6.0.0</version>
+		</dependency>
+		
+		<dependency>
+  			<groupId>com.goldmansachs</groupId>
+  			<artifactId>gs-collections</artifactId>
+  			<version>6.0.0</version>
+		</dependency>
 
 	</dependencies>
 

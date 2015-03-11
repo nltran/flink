@@ -59,9 +59,11 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.runtime.iterative.convergence.WorksetEmptyConvergenceCriterion;
+import org.apache.flink.runtime.iterative.task.ABSPIterationHeadPactTask;
 import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.runtime.iterative.task.IterationIntermediatePactTask;
 import org.apache.flink.runtime.iterative.task.IterationSynchronizationSinkTask;
+import org.apache.flink.runtime.iterative.task.ClockSinkTask;
 import org.apache.flink.runtime.iterative.task.IterationTailPactTask;
 import org.apache.flink.runtime.jobgraph.AbstractJobVertex;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
@@ -984,7 +986,8 @@ public class NepheleJobGraphGenerator implements Visitor<PlanNode> {
 			}
 			
 			// reset the vertex type to iteration head
-			headVertex.setInvokableClass(IterationHeadPactTask.class);
+//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			toReturn = null;
 		} else {
@@ -992,7 +995,8 @@ public class NepheleJobGraphGenerator implements Visitor<PlanNode> {
 			// everything else happens in the post visit, after the input (the initial partial solution)
 			// is connected.
 			headVertex = new AbstractJobVertex("IterationHead("+iteration.getNodeName()+")");
-			headVertex.setInvokableClass(IterationHeadPactTask.class);
+//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			headConfig.setDriver(NoOpDriver.class);
 			toReturn = headVertex;
@@ -1320,7 +1324,8 @@ public class NepheleJobGraphGenerator implements Visitor<PlanNode> {
 		final TaskConfig syncConfig;
 		{
 			final AbstractJobVertex sync = new AbstractJobVertex("Sync (" + iterNode.getNodeName() + ")");
-			sync.setInvokableClass(IterationSynchronizationSinkTask.class);
+//			sync.setInvokableClass(IterationSynchronizationSinkTask.class);
+			sync.setInvokableClass(ClockSinkTask.class);
 			sync.setParallelism(1);
 			this.auxVertices.add(sync);
 			
