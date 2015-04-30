@@ -9,6 +9,7 @@ import org.apache.flink.api.java.operators.IterativeDataSet;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
 public class SSPJob{
 
@@ -39,9 +40,10 @@ public class SSPJob{
 	}
 
 	public static final class incrementer implements MapFunction<Integer, Integer> {
-
+		public static Random random = new Random();
 		@Override
 		public Integer map(Integer value) throws Exception {
+			Thread.sleep(random.nextInt(2500));
 			return value + 1;
 		}
 	}

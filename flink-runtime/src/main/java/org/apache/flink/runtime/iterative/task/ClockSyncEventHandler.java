@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.iterative.task;
 
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -29,8 +30,12 @@ import org.apache.flink.types.Value;
 
 import com.gs.collections.api.bag.MutableBag;
 import com.gs.collections.impl.bag.mutable.HashBag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ClockSyncEventHandler implements EventListener<TaskEvent> {
+
+	private static final Logger log = LoggerFactory.getLogger(ClockSyncEventHandler.class);
 	
 	private final ClassLoader userCodeClassLoader;
 	
@@ -49,15 +54,22 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 	
 	private final MutableBag<Integer> workersClocks;
 
+	private Map<Integer, Integer> clocks;
+
 
 	public ClockSyncEventHandler(Map<String, Aggregator<?>> aggregators, ClassLoader userCodeClassLoader) {
 		this.userCodeClassLoader = userCodeClassLoader;
 		this.aggregators = aggregators;
 		this.workersClocks = new HashBag<Integer>();
+		this.clocks = new HashMap<Integer, Integer>();
 	}
 	
 	private void workerClock(int workerInt) {
 		this.workersClocks.add(workerInt);
+	}
+
+	private void workerClock(int workerInt, int clock) {
+		this.clocks.put(workerInt, clock);
 	}
 	
 	private int computeCurrentClock() {
@@ -93,10 +105,13 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 		
 		int workerIndex = workerClockEvent.getWorkerIndex();
 		int workerClock = workerClockEvent.getWorkerClock();
+
+		log.info("Worker " + workerIndex +" is at clock "+ workerClock);
 		
 		int oldClock = currentClock;
-		workerClock(workerIndex);
-		currentClock = computeCurrentClock();
+//		workerClock(workerIndex);
+		workerClock(workerIndex, workerClock);
+//		currentClock = computeCurrentClock();
 
 		if(workerClock > currentClock + absp) {
 			for (int i = 0; i < aggNames.length; i++) {
@@ -106,7 +121,9 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 			}
 		}
 
-		if(oldClock != currentClock ) {
+//		if(oldClock != currentClock ) {
+		if(allWorkersAtClock( currentClock + absp + 1)) {
+			currentClock++;
 			this.endOfSuperstep = true;
 			Thread.currentThread().interrupt();
 		}
@@ -117,8 +134,26 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 //		return workersClocks.sizeDistinct() == 1;
 //	}
 //
+	private boolean allWorkersAtClock(int clock) {
+		for(Map.Entry<Integer, Integer> e:clocks.entrySet()) {
+			if(e.getValue() != clock) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 //	private boolean allWorkersAtClock(int clock) {
-//		for(Iterator i = workersClocks.iterator();i.h)
+//		Iterator<Integer> i = workersClocks.iterator();
+//		while(i.hasNext()){
+//			int ii = i.next();
+//			if(ii != clock){
+//				return false;
+//			}
+//
+//		}
+//		return true;
+//
 //	}
 //	private void onWorkerDoneEvent(WorkerDoneEvent workerDoneEvent) {
 //		if (this.endOfSuperstep) {
