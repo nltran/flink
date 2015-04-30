@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.util.Map;
 
 import org.apache.flink.api.common.aggregators.Aggregator;
-import org.apache.flink.core.io.StringRecord;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 
@@ -71,15 +70,18 @@ public class ClockTaskEvent extends IterationEventWithAggregators {
 
 	@Override
 	public void write(final DataOutputView out) throws IOException {
+		out.writeLong(this.clock);
+		super.write(out);
+//		StringRecord.writeString(out, Long.toString(this.clock));
 
-		StringRecord.writeString(out, Long.toString(this.clock));
 	}
 
 
 	@Override
 	public void read(final DataInputView in) throws IOException {
-
-		this.clock = Integer.parseInt(StringRecord.readString(in));
+		this.clock = in.readInt();
+		super.read(in);
+//		this.clock = Integer.parseInt(StringRecord.readString(in));
 	}
 
 

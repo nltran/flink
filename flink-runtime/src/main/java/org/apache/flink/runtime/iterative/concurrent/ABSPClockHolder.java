@@ -28,13 +28,17 @@ import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
 import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.types.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A resettable one-shot latch.
  * Replaces the SuperStepBarrier held by the {@link IterationHeadPactTask}
  */
 public class ABSPClockHolder implements EventListener<TaskEvent> {
-	
+
+	private static final Logger log = LoggerFactory.getLogger(ABSPClockHolder.class);
+
 	private final ClassLoader userCodeClassLoader;
 
 	private boolean terminationSignaled = false;
@@ -47,14 +51,27 @@ public class ABSPClockHolder implements EventListener<TaskEvent> {
 	private int ownClock =0;
 	private int currentClock=0;
 	private int absp = 3;
-	
+	private boolean justBeenReleased = false;
+
+	public boolean isJustBeenReleased() {
+		return justBeenReleased;
+	}
+
+	public void resetJustBeenReleased(){
+		justBeenReleased = false;
+	}
+
+	public boolean isAtABSPLimit() {
+		return (ownClock == currentClock+absp);
+	}
 	
 	public ABSPClockHolder(ClassLoader userCodeClassLoader) {
 		this.userCodeClassLoader = userCodeClassLoader;
 	}
-	
+
 	public void clock(){
 		this.ownClock++;
+
 	}
 	
 	public int getClock(){
@@ -71,9 +88,13 @@ public class ABSPClockHolder implements EventListener<TaskEvent> {
 	/** wait on the barrier */
 	public void waitForNextClock() throws InterruptedException {
 		if(ownClock > currentClock + absp ) {
+			log.info("Worker is ahead of absp bound (" + absp + ")  : current clock:" + currentClock +" ownclock: " + ownClock);
 			setup();
 			latch.await();
 		}
+
+		log.info("Worker can continue moving ahead (" + absp + ")  : current clock:" + currentClock +" ownclock: " + ownClock);
+
 	}
 
 	public String[] getAggregatorNames() {
@@ -104,6 +125,7 @@ public class ABSPClockHolder implements EventListener<TaskEvent> {
 			AllWorkersDoneEvent wde = (AllWorkersDoneEvent) event;
 			aggregatorNames = wde.getAggregatorNames();
 			aggregates = wde.getAggregates(userCodeClassLoader);
+			justBeenReleased = true;
 		}
 		else {
 			throw new IllegalArgumentException("Unknown event type.");

@@ -31,8 +31,8 @@ import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.disk.InputViewIterator;
-import org.apache.flink.runtime.io.network.api.writer.BufferWriter;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.iterative.concurrent.ABSPClockHolder;
 import org.apache.flink.runtime.iterative.concurrent.BlockingBackChannel;
 import org.apache.flink.runtime.iterative.concurrent.BlockingBackChannelBroker;
@@ -86,19 +86,19 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 	private Collector<X> finalOutputCollector;
 
-	private List<RecordWriter<?>> finalOutputWriters;
+//	private List<RecordWriter<?>> finalOutputWriters;
 
 	private TypeSerializerFactory<Y> feedbackTypeSerializer;
 
 	private TypeSerializerFactory<X> solutionTypeSerializer;
 
-	private BufferWriter toSync;
+	private ResultPartitionWriter toSync;
 
-	private int initialSolutionSetInput; // undefined for bulk iterations
+//	private int initialSolutionSetInput; // undefined for bulk iterations
 
 	private int feedbackDataInput; // workset or bulk partial solution
 
-	private RuntimeAggregatorRegistry aggregatorRegistry;
+//	private RuntimeAggregatorRegistry aggregatorRegistry;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -116,15 +116,15 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 		// at this time, the outputs to the step function are created
 		// add the outputs for the final solution
-		this.finalOutputWriters = new ArrayList<RecordWriter<?>>();
+		List<RecordWriter<?>> finalOutputWriters = new ArrayList<RecordWriter<?>>();
 		final TaskConfig finalOutConfig = this.config.getIterationHeadFinalOutputConfig();
 		final ClassLoader userCodeClassLoader = getUserCodeClassLoader();
 		this.finalOutputCollector = RegularPactTask.getOutputCollector(this, finalOutConfig,
-			userCodeClassLoader, this.finalOutputWriters, config.getNumOutputs(), finalOutConfig.getNumOutputs());
+			userCodeClassLoader, finalOutputWriters, config.getNumOutputs(), finalOutConfig.getNumOutputs());
 
 		// sanity check the setup
 		final int writersIntoStepFunction = this.eventualOutputs.size();
-		final int writersIntoFinalResult = this.finalOutputWriters.size();
+		final int writersIntoFinalResult = finalOutputWriters.size();
 		final int syncGateIndex = this.config.getIterationHeadIndexOfSyncOutput();
 
 		if (writersIntoStepFunction + writersIntoFinalResult != syncGateIndex) {
@@ -208,13 +208,12 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 		TypeSerializer<BT> solutionTypeSerializer = solutionTypeSerializerFactory.getSerializer();
 		TypeComparator<BT> solutionTypeComparator = solutionTypeComparatorFactory.createComparator();
 		
-		JoinHashMap<BT> map = new JoinHashMap<BT>(solutionTypeSerializer, solutionTypeComparator);
-		return map;
+		return new JoinHashMap<BT>(solutionTypeSerializer, solutionTypeComparator);
 	}
 	
 	private void readInitialSolutionSet(CompactingHashTable<X> solutionSet, MutableObjectIterator<X> solutionSetInput) throws IOException {
 		solutionSet.open();
-		solutionSet.buildTable(solutionSetInput);
+		solutionSet.buildTableWithUniqueKey(solutionSetInput);
 	}
 	
 	private void readInitialSolutionSet(JoinHashMap<X> solutionSet, MutableObjectIterator<X> solutionSetInput) throws IOException {
@@ -235,6 +234,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 	
 	private ABSPClockHolder initClockHolder() {
 		ABSPClockHolder clockHolder = new ABSPClockHolder(getUserCodeClassLoader());
+		// listens from the sink
 		this.toSync.subscribeToEvent(clockHolder, ClockTaskEvent.class);
 		this.toSync.subscribeToEvent(clockHolder, TerminationEvent.class);
 		return clockHolder;
@@ -264,14 +264,15 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 			SolutionSetUpdateBarrier solutionSetUpdateBarrier = null;
 
 			feedbackDataInput = config.getIterationHeadPartialSolutionOrWorksetInputIndex();
-			feedbackTypeSerializer = this.<Y>getInputSerializer(feedbackDataInput);
+			feedbackTypeSerializer = this.getInputSerializer(feedbackDataInput);
 			excludeFromReset(feedbackDataInput);
 
+			int initialSolutionSetInput;
 			if (isWorksetIteration) {
 				initialSolutionSetInput = config.getIterationHeadSolutionSetInputIndex();
-				TypeSerializerFactory<X> solutionTypeSerializerFactory = config
-						.getSolutionSetSerializer(getUserCodeClassLoader());
-				solutionTypeSerializer = solutionTypeSerializerFactory;
+//				TypeSerializerFactory<X> solutionTypeSerializerFactory = config
+//						.getSolutionSetSerializer(getUserCodeClassLoader());
+				solutionTypeSerializer = config.getSolutionSetSerializer(getUserCodeClassLoader());
 
 				// setup the index for the solution set
 				@SuppressWarnings("unchecked")
@@ -292,10 +293,10 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 					solutionSetUpdateBarrier = new SolutionSetUpdateBarrier();
 					SolutionSetUpdateBarrierBroker.instance().handIn(brokerKey, solutionSetUpdateBarrier);
 				}
-			} else {
+			}
+			else {
 				// bulk iteration case
-				initialSolutionSetInput = -1;
-
+//				initialSolutionSetInput = -1;
 				@SuppressWarnings("unchecked")
 				TypeSerializerFactory<X> solSer = (TypeSerializerFactory<X>) feedbackTypeSerializer;
 				solutionTypeSerializer = solSer;
@@ -308,7 +309,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 			}
 
 			// instantiate all aggregators and register them at the iteration global registry
-			aggregatorRegistry = new RuntimeAggregatorRegistry(config.getIterationAggregators
+			RuntimeAggregatorRegistry aggregatorRegistry = new RuntimeAggregatorRegistry(config.getIterationAggregators
 					(getUserCodeClassLoader()));
 			IterationAggregatorBroker.instance().handIn(brokerKey, aggregatorRegistry);
 
@@ -348,13 +349,16 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 //				sendEventToSync(new WorkerDoneEvent(workerIndex, aggregatorRegistry.getAllAggregators()));
 				clockHolder.clock();
+				log.info(formatLogString("Worker is now clock "+ clockHolder.getClock()));
+
 				sendEventToSync(new WorkerClockEvent(workerIndex, clockHolder.getClock(), aggregatorRegistry.getAllAggregators()));
 
-				if (log.isInfoEnabled()) {
-					log.info(formatLogString("waiting for other workers in iteration [" + currentIteration() + "]"));
-				}
+//				if (log.isInfoEnabled()) {
+//					log.info(formatLogString("waiting for other workers in iteration [" + currentIteration() + "]"));
+//				}
 
 //				barrier.waitForOtherWorkers();
+				log.info(formatLogString("Finished one absp step"));
 				clockHolder.waitForNextClock();
 
 				if (clockHolder.terminationSignaled()) {
@@ -367,17 +371,20 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 					nextStepKickoff.signalTermination();
 				} else {
 					incrementIterationCounter();
+					if(clockHolder.isJustBeenReleased()) {
 
-					String[] globalAggregateNames = clockHolder.getAggregatorNames();
-					Value[] globalAggregates = clockHolder.getAggregates();
-					aggregatorRegistry.updateGlobalAggregatesAndReset(globalAggregateNames, globalAggregates);
-					
+						String[] globalAggregateNames = clockHolder.getAggregatorNames();
+						Value[] globalAggregates = clockHolder.getAggregates();
+						aggregatorRegistry.updateGlobalAggregatesAndReset(globalAggregateNames, globalAggregates);
+						clockHolder.resetJustBeenReleased();
+
+					}
 					nextStepKickoff.triggerNextSuperstep();
 				}
 			}
 
 			if (log.isInfoEnabled()) {
-				log.info(formatLogString("streaming out final result after [" + currentIteration() + "] iterations"));
+				log.info(formatLogString("streaming out final result after [" + currentIteration() + "] iterations and clock "+ clockHolder.getClock()));
 			}
 
 			if (isWorksetIteration) {
@@ -405,7 +412,6 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 			if (solutionSet != null) {
 				solutionSet.close();
-				solutionSet = null;
 			}
 		}
 	}
@@ -447,8 +453,8 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 			log.debug(formatLogString("Sending end-of-superstep to all iteration outputs."));
 		}
 
-		for (int outputIndex = 0; outputIndex < this.eventualOutputs.size(); outputIndex++) {
-			this.eventualOutputs.get(outputIndex).sendEndOfSuperstep();
+		for (RecordWriter<?> eventualOutput : this.eventualOutputs) {
+			eventualOutput.sendEndOfSuperstep();
 		}
 	}
 

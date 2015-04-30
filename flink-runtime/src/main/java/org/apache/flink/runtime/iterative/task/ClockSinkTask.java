@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.flink.runtime.event.task.TaskEvent;
+import org.apache.flink.types.IntValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.flink.api.common.aggregators.Aggregator;
@@ -39,7 +40,6 @@ import org.apache.flink.runtime.iterative.event.WorkerDoneEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.operators.RegularPactTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
-import org.apache.flink.runtime.types.IntegerRecord;
 import org.apache.flink.types.Value;
 
 import com.google.common.base.Preconditions;
@@ -54,7 +54,7 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 
 	private static final Logger log = LoggerFactory.getLogger(ClockSinkTask.class);
 
-	private MutableRecordReader<IntegerRecord> headEventReader;
+	private MutableRecordReader<IntValue> headEventReader;
 	
 //	private SyncEventHandler eventHandler;
 	
@@ -77,7 +77,7 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 	
 	@Override
 	public void registerInputOutput() {
-		this.headEventReader = new MutableRecordReader<IntegerRecord>(getEnvironment().getInputGate(0));
+		this.headEventReader = new MutableRecordReader<IntValue>(getEnvironment().getInputGate(0));
 	}
 
 	@Override
@@ -107,7 +107,7 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 //				getEnvironment().getUserClassLoader());
 //		headEventReader.registerTaskEventListener(eventHandler, WorkerDoneEvent.class);
 
-		IntegerRecord dummy = new IntegerRecord();
+		IntValue dummy = new IntValue();
 		
 		while (!terminationRequested()) {
 
@@ -138,18 +138,19 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 						+ "]"));
 				}
 
-//				AllWorkersDoneEvent allWorkersDoneEvent = new AllWorkersDoneEvent(aggregators);
+				AllWorkersDoneEvent allWorkersDoneEvent = new AllWorkersDoneEvent(aggregators);
 				int currentClock = eventHandler.getCurrentClock();
 				ClockTaskEvent clockTaskEvent = new ClockTaskEvent(currentClock, aggregators);
 				sendToAllWorkers(clockTaskEvent);
-				
+				log.info(formatLogString("Clock is now "+ currentClock +" and current iteration is "+ currentIteration));
+
 				// reset all aggregators
 				for (Aggregator<?> agg : aggregators.values()) {
 					agg.reset();
 				}
-				
-//				notifyMonitor(IterationMonitoring.Event.SYNC_FINISHED, currentIteration);
 				currentIteration++;
+
+//				notifyMonitor(IterationMonitoring.Event.SYNC_FINISHED, currentIteration);
 			}
 		}
 	}
@@ -161,6 +162,8 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 //	}
 
 	private boolean checkForConvergence() {
+
+
 		if (maxNumberOfIterations == currentIteration) {
 			if (log.isInfoEnabled()) {
 				log.info(formatLogString("maximum number of iterations [" + currentIteration
@@ -190,7 +193,7 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 		return false;
 	}
 
-	private void readHeadEventChannel(IntegerRecord rec) throws IOException {
+	private void readHeadEventChannel(IntValue rec) throws IOException {
 		// reset the handler
 		eventHandler.resetEndOfSuperstep();
 		

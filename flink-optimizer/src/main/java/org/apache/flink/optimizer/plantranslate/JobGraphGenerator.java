@@ -917,7 +917,8 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			}
 			
 			// reset the vertex type to iteration head
-			headVertex.setInvokableClass(IterationHeadPactTask.class);
+//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			toReturn = null;
 		} else {
@@ -925,7 +926,8 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			// everything else happens in the post visit, after the input (the initial partial solution)
 			// is connected.
 			headVertex = new AbstractJobVertex("PartialSolution ("+iteration.getNodeName()+")");
-			headVertex.setInvokableClass(IterationHeadPactTask.class);
+//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			headConfig.setDriver(NoOpDriver.class);
 			toReturn = headVertex;
@@ -1212,7 +1214,8 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		
 		// --------------------------- create the sync task ---------------------------
 		final AbstractJobVertex sync = new AbstractJobVertex("Sync(" + bulkNode.getNodeName() + ")");
-		sync.setInvokableClass(IterationSynchronizationSinkTask.class);
+//		sync.setInvokableClass(IterationSynchronizationSinkTask.class);
+		sync.setInvokableClass(ClockSinkTask.class);
 		sync.setParallelism(1);
 		this.auxVertices.add(sync);
 		

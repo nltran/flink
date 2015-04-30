@@ -27,9 +27,9 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.types.Value;
 
-public class WorkerClockEvent extends IterationEventWithAggregators {
+public class WorkerClockEvent extends WorkerDoneEvent {
 	
-	private int workerIndex;
+//	private int workerIndex;
 	private int workerClock;
 	
 	public WorkerClockEvent() {
@@ -37,20 +37,20 @@ public class WorkerClockEvent extends IterationEventWithAggregators {
 	}
 
 	public WorkerClockEvent(int workerIndex, int workerClock, String aggregatorName, Value aggregate) {
-		super(aggregatorName, aggregate);
-		this.workerIndex = workerIndex;
+		super(workerIndex, aggregatorName, aggregate);
+//		this.workerIndex = workerIndex;
 		this.workerClock = workerClock;
 	}
 	
 	public WorkerClockEvent(int workerIndex, int workerClock, Map<String, Aggregator<?>> aggregators) {
-		super(aggregators);
-		this.workerIndex = workerIndex;
+		super(workerIndex, aggregators);
+//		this.workerIndex = workerIndex;
 		this.workerClock = workerClock;
 	}
 	
-	public int getWorkerIndex() {
-		return workerIndex;
-	}
+//	public int getWorkerIndex() {
+//		return workerIndex;
+//	}
 	
 	public int getWorkerClock() {
 		return workerClock;
@@ -58,14 +58,14 @@ public class WorkerClockEvent extends IterationEventWithAggregators {
 	
 	@Override
 	public void write(DataOutputView out) throws IOException {
-		out.writeInt(this.workerIndex);
-		out.writeLong(workerClock);
+//		out.writeInt(this.workerIndex);
+		out.writeInt(this.workerClock);
 		super.write(out);
 	}
 	
 	@Override
 	public void read(DataInputView in) throws IOException {
-		this.workerIndex = in.readInt();
+//		this.workerIndex = in.readInt();
 		this.workerClock = in.readInt();
 		super.read(in);
 	}

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.iterative.task;
 
+import java.util.Iterator;
 import java.util.Map;
 
 import org.apache.flink.api.common.aggregators.Aggregator;
@@ -41,7 +42,7 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 	
 	private boolean endOfSuperstep;
 	
-	private int assp = 3;
+	private int absp = 3;
 	
 	private int currentClock = 0;
 	
@@ -96,21 +97,29 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 		int oldClock = currentClock;
 		workerClock(workerIndex);
 		currentClock = computeCurrentClock();
-		
-		if(workerClock > currentClock + assp) {
+
+		if(workerClock > currentClock + absp) {
 			for (int i = 0; i < aggNames.length; i++) {
 				@SuppressWarnings("unchecked")
 				Aggregator<Value> aggregator = (Aggregator<Value>) this.aggregators.get(aggNames[i]);
 				aggregator.aggregate(aggregates[i]);
 			}
 		}
-		
-		if(oldClock != currentClock) {
+
+		if(oldClock != currentClock ) {
 			this.endOfSuperstep = true;
+			Thread.currentThread().interrupt();
 		}
-		
+
 	}
 
+//	private boolean allWorkersAtSameClock() {
+//		return workersClocks.sizeDistinct() == 1;
+//	}
+//
+//	private boolean allWorkersAtClock(int clock) {
+//		for(Iterator i = workersClocks.iterator();i.h)
+//	}
 //	private void onWorkerDoneEvent(WorkerDoneEvent workerDoneEvent) {
 //		if (this.endOfSuperstep) {
 //			throw new RuntimeException("Encountered WorderDoneEvent when still in End-of-Superstep status.");
