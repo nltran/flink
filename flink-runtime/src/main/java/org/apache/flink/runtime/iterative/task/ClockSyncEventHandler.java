@@ -113,6 +113,8 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 		workerClock(workerIndex, workerClock);
 //		currentClock = computeCurrentClock();
 
+
+		// Clock currentClock + absp is reached when workers completed absp iterations
 		if(workerClock > currentClock + absp) {
 			for (int i = 0; i < aggNames.length; i++) {
 				@SuppressWarnings("unchecked")
