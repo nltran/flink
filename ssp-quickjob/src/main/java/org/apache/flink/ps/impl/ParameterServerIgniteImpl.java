@@ -25,11 +25,6 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 	private IgniteCache<String, ParameterElement> parameterCache = null;
 	private IgniteCache<String, Integer> clockCache = null;
 
-
-	public static void startParameterServer() {
-
-	}
-
 	public ParameterServerIgniteImpl(String name) {
 		try {
 			CacheConfiguration<String, ParameterElement> parameterCacheCfg = new CacheConfiguration<String, ParameterElement>();
@@ -107,6 +102,7 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 		clock(Integer.toString(wid));
 	}
 
+	@Override
 	public void shutDown() {
 		ignite.close();
 	}

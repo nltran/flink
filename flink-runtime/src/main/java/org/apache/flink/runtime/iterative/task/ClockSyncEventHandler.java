@@ -50,6 +50,8 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 	private int absp = 3;
 	
 	private int currentClock = 0;
+
+	private final int numberOfEventsUntilEndOfSuperstep;
 	
 	
 	private final MutableBag<Integer> workersClocks;
@@ -57,9 +59,10 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 	private Map<Integer, Integer> clocks;
 
 
-	public ClockSyncEventHandler(Map<String, Aggregator<?>> aggregators, ClassLoader userCodeClassLoader) {
+	public ClockSyncEventHandler(int numberOfEventsUntilEndOfSuperstep,Map<String, Aggregator<?>> aggregators, ClassLoader userCodeClassLoader) {
 		this.userCodeClassLoader = userCodeClassLoader;
 		this.aggregators = aggregators;
+		this.numberOfEventsUntilEndOfSuperstep = numberOfEventsUntilEndOfSuperstep;
 		this.workersClocks = new HashBag<Integer>();
 		this.clocks = new HashMap<Integer, Integer>();
 	}
@@ -124,11 +127,13 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 		}
 
 //		if(oldClock != currentClock ) {
-		if(allWorkersAtClock( currentClock + absp + 1)) {
+		if(allWorkersAtClock( currentClock + absp + 1) && howManyWorkersAtClock(currentClock + absp + 1) % numberOfEventsUntilEndOfSuperstep ==0) {
 			currentClock++;
 			this.endOfSuperstep = true;
 			Thread.currentThread().interrupt();
 		}
+
+
 
 	}
 
@@ -136,7 +141,19 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 //		return workersClocks.sizeDistinct() == 1;
 //	}
 //
-	private boolean allWorkersAtClock(int clock) {
+//	private boolean allWorkersAtSameClock()
+
+	private int howManyWorkersAtClock(int clock) {
+		int count = 0;
+		for(Map.Entry<Integer, Integer> e:clocks.entrySet()) {
+			if(e.getValue() == clock) {
+				++count;
+			}
+		}
+		return count;
+	}
+
+	public boolean allWorkersAtClock(int clock) {
 		for(Map.Entry<Integer, Integer> e:clocks.entrySet()) {
 			if(e.getValue() != clock) {
 				return false;

@@ -100,8 +100,8 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 		maxNumberOfIterations = taskConfig.getNumberOfIterations();
 		
 		// set up the event handler
-//		int numEventsTillEndOfSuperstep = taskConfig.getNumberOfEventsUntilInterruptInIterativeGate(0);
-		eventHandler = new ClockSyncEventHandler(aggregators, getEnvironment().getUserClassLoader());
+		int numEventsTillEndOfSuperstep = taskConfig.getNumberOfEventsUntilInterruptInIterativeGate(0);
+		eventHandler = new ClockSyncEventHandler(numEventsTillEndOfSuperstep, aggregators, getEnvironment().getUserClassLoader());
 		headEventReader.registerTaskEventListener(eventHandler, WorkerClockEvent.class);
 //		eventHandler = new SyncEventHandler(numEventsTillEndOfSuperstep, aggregators,
 //				getEnvironment().getUserClassLoader());
@@ -165,11 +165,19 @@ public class ClockSinkTask extends AbstractInvokable implements Terminable {
 
 
 		if (maxNumberOfIterations == currentIteration) {
-			if (log.isInfoEnabled()) {
-				log.info(formatLogString("maximum number of iterations [" + currentIteration
-					+ "] reached, terminating..."));
+
+			if (eventHandler.allWorkersAtClock(eventHandler.getCurrentClock() + 3)) {
+				if (log.isInfoEnabled()) {
+					log.info(formatLogString("maximum number of iterations [" + currentIteration
+							+ "] reached, terminating..."));
+					return true;
+				} else {
+					if (log.isInfoEnabled()) {
+						log.info(formatLogString("maximum number of iterations [" + currentIteration
+								+ "] reached, but waiting for workers to reach final clock..."));
+					}
+				}
 			}
-			return true;
 		}
 
 		if (convergenceAggregatorName != null) {
