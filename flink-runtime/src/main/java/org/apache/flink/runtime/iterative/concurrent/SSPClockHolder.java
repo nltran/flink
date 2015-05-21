@@ -19,15 +19,15 @@
 
 package org.apache.flink.runtime.iterative.concurrent;
 
-import java.util.concurrent.CountDownLatch;
-
 import org.apache.flink.runtime.event.task.TaskEvent;
-import org.apache.flink.runtime.util.event.EventListener;
 import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
+import org.apache.flink.runtime.util.event.EventListener;
 import org.apache.flink.types.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.CountDownLatch;
 
 /**
  * A resettable one-shot latch.

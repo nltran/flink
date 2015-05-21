@@ -19,18 +19,11 @@
 
 package org.apache.flink.runtime.iterative.task;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import org.apache.flink.runtime.event.task.TaskEvent;
-import org.apache.flink.types.IntValue;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.google.common.base.Preconditions;
 import org.apache.flink.api.common.aggregators.Aggregator;
 import org.apache.flink.api.common.aggregators.AggregatorWithName;
 import org.apache.flink.api.common.aggregators.ConvergenceCriterion;
+import org.apache.flink.runtime.event.task.TaskEvent;
 import org.apache.flink.runtime.io.network.api.reader.MutableRecordReader;
 import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
@@ -38,9 +31,15 @@ import org.apache.flink.runtime.iterative.event.WorkerClockEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.operators.RegularPactTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
+import org.apache.flink.types.IntValue;
 import org.apache.flink.types.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Preconditions;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The task responsible for synchronizing all iteration heads, implemented as an output task. This task
@@ -56,7 +55,7 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 	
 //	private SyncEventHandler eventHandler;
 	
-	private ClockSyncEventHandler eventHandler;
+	private SSPClockSyncEventHandler eventHandler;
 
 	private ConvergenceCriterion<Value> convergenceCriterion;
 	
@@ -99,7 +98,7 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 		
 		// set up the event handler
 		int numEventsTillEndOfSuperstep = taskConfig.getNumberOfEventsUntilInterruptInIterativeGate(0);
-		eventHandler = new ClockSyncEventHandler(numEventsTillEndOfSuperstep, aggregators, getEnvironment().getUserClassLoader());
+		eventHandler = new SSPClockSyncEventHandler(numEventsTillEndOfSuperstep, aggregators, getEnvironment().getUserClassLoader());
 		headEventReader.registerTaskEventListener(eventHandler, WorkerClockEvent.class);
 //		eventHandler = new SyncEventHandler(numEventsTillEndOfSuperstep, aggregators,
 //				getEnvironment().getUserClassLoader());
@@ -137,15 +136,20 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 				}
 
 //				AllWorkersDoneEvent allWorkersDoneEvent = new AllWorkersDoneEvent(aggregators);
-				int currentClock = eventHandler.getCurrentClock();
-				ClockTaskEvent clockTaskEvent = new ClockTaskEvent(currentClock, aggregators);
-				sendToAllWorkers(clockTaskEvent);
-				log.info(formatLogString("Clock is now "+ currentClock +" and current iteration is "+ currentIteration));
+
+				if(eventHandler.isClockUpdated()) {
+					int currentClock = eventHandler.getCurrentClock();
+					ClockTaskEvent clockTaskEvent = new ClockTaskEvent(currentClock, aggregators);
+					sendToAllWorkers(clockTaskEvent);
+					eventHandler.resetClockUpdated();
+					log.info(formatLogString("Clock is now "+ currentClock +" and current iteration is "+ currentIteration));
+				}
 
 				// reset all aggregators
-				for (Aggregator<?> agg : aggregators.values()) {
-					agg.reset();
-				}
+				// TODO Warning: in SSP aggregators are not reset
+//				for (Aggregator<?> agg : aggregators.values()) {
+//					agg.reset();
+//				}
 				currentIteration++;
 
 //				notifyMonitor(IterationMonitoring.Event.SYNC_FINISHED, currentIteration);
