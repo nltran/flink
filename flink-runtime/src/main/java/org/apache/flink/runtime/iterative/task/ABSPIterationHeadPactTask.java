@@ -69,16 +69,14 @@ import org.slf4j.LoggerFactory;
  * the second iteration, the input for the head is the output of the tail, transmitted through the backchannel. Once the
  * iteration is done, the head
  * will send a {@link TerminationEvent} to all it's connected tasks, signaling them to shutdown.
- * <p>
+ * <p/>
  * Assumption on the ordering of the outputs: - The first n output gates write to channels that go to the tasks of the
  * step function. - The next m output gates to to the tasks that consume the final solution. - The last output gate
  * connects to the synchronization task.
- * 
- * @param <X>
- *        The type of the bulk partial solution / solution set and the final output.
- * @param <Y>
- *        The type of the feed-back data set (bulk partial solution / workset). For bulk iterations, {@code Y} is the
- *        same as {@code X}
+ *
+ * @param <X> The type of the bulk partial solution / solution set and the final output.
+ * @param <Y> The type of the feed-back data set (bulk partial solution / workset). For bulk iterations, {@code Y} is the
+ *            same as {@code X}
  */
 public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends AbstractIterativePactTask<S, OT> {
 
@@ -120,7 +118,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 		final TaskConfig finalOutConfig = this.config.getIterationHeadFinalOutputConfig();
 		final ClassLoader userCodeClassLoader = getUserCodeClassLoader();
 		this.finalOutputCollector = RegularPactTask.getOutputCollector(this, finalOutConfig,
-			userCodeClassLoader, finalOutputWriters, config.getNumOutputs(), finalOutConfig.getNumOutputs());
+				userCodeClassLoader, finalOutputWriters, config.getNumOutputs(), finalOutConfig.getNumOutputs());
 
 		// sanity check the setup
 		final int writersIntoStepFunction = this.eventualOutputs.size();
@@ -137,7 +135,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 	/**
 	 * the iteration head prepares the backchannel: it allocates memory, instantiates a {@link BlockingBackChannel} and
 	 * hands it to the iteration tail via a {@link Broker} singleton
-	 **/
+	 */
 	private BlockingBackChannel initBackChannel() throws Exception {
 
 		/* get the size of the memory available to the backchannel */
@@ -150,7 +148,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 		/* instantiate the backchannel */
 		BlockingBackChannel backChannel = new BlockingBackChannel(new SerializedUpdateBuffer(segments, segmentSize,
-			getIOManager()));
+				getIOManager()));
 
 		/* hand the backchannel over to the iteration tail */
 		Broker<BlockingBackChannel> broker = BlockingBackChannelBroker.instance();
@@ -158,7 +156,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 		return backChannel;
 	}
-	
+
 	private <BT> CompactingHashTable<BT> initCompactingHashTable() throws Exception {
 		// get some memory
 		double hashjoinMemorySize = config.getRelativeSolutionSetMemory();
@@ -166,7 +164,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 		TypeSerializerFactory<BT> solutionTypeSerializerFactory = config.getSolutionSetSerializer(userCodeClassLoader);
 		TypeComparatorFactory<BT> solutionTypeComparatorFactory = config.getSolutionSetComparator(userCodeClassLoader);
-	
+
 		TypeSerializer<BT> solutionTypeSerializer = solutionTypeSerializerFactory.getSerializer();
 		TypeComparator<BT> solutionTypeComparator = solutionTypeComparatorFactory.createComparator();
 
@@ -198,27 +196,27 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 			}
 		}
 	}
-	
+
 	private <BT> JoinHashMap<BT> initJoinHashMap() {
 		TypeSerializerFactory<BT> solutionTypeSerializerFactory = config.getSolutionSetSerializer
 				(getUserCodeClassLoader());
 		TypeComparatorFactory<BT> solutionTypeComparatorFactory = config.getSolutionSetComparator
 				(getUserCodeClassLoader());
-	
+
 		TypeSerializer<BT> solutionTypeSerializer = solutionTypeSerializerFactory.getSerializer();
 		TypeComparator<BT> solutionTypeComparator = solutionTypeComparatorFactory.createComparator();
-		
+
 		return new JoinHashMap<BT>(solutionTypeSerializer, solutionTypeComparator);
 	}
-	
+
 	private void readInitialSolutionSet(CompactingHashTable<X> solutionSet, MutableObjectIterator<X> solutionSetInput) throws IOException {
 		solutionSet.open();
 		solutionSet.buildTableWithUniqueKey(solutionSetInput);
 	}
-	
+
 	private void readInitialSolutionSet(JoinHashMap<X> solutionSet, MutableObjectIterator<X> solutionSetInput) throws IOException {
 		TypeSerializer<X> serializer = solutionTypeSerializer.getSerializer();
-		
+
 		X next;
 		while ((next = solutionSetInput.next(serializer.createInstance())) != null) {
 			solutionSet.insertOrReplace(next);
@@ -231,7 +229,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 		this.toSync.subscribeToEvent(barrier, TerminationEvent.class);
 		return barrier;
 	}
-	
+
 	private ABSPClockHolder initClockHolder() {
 		ABSPClockHolder clockHolder = new ABSPClockHolder(getUserCodeClassLoader());
 		// listens from the sink
@@ -239,17 +237,17 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 		this.toSync.subscribeToEvent(clockHolder, TerminationEvent.class);
 		return clockHolder;
 	}
-	
+
 	@Override
 	public void run() throws Exception {
 		final String brokerKey = brokerKey();
 		final int workerIndex = getEnvironment().getIndexInSubtaskGroup();
-		
+
 		final boolean objectSolutionSet = config.isSolutionSetUnmanaged();
 
 		CompactingHashTable<X> solutionSet = null; // if workset iteration
 		JoinHashMap<X> solutionSetObjectMap = null; // if workset iteration with unmanaged solution set
-		
+
 		boolean waitForSolutionSetUpdate = config.getWaitForSolutionSetUpdate();
 		boolean isWorksetIteration = config.getIsWorksetIteration();
 
@@ -257,7 +255,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 			/* used for receiving the current iteration result from iteration tail */
 			SuperstepKickoffLatch nextStepKickoff = new SuperstepKickoffLatch();
 			SuperstepKickoffLatchBroker.instance().handIn(brokerKey, nextStepKickoff);
-			
+
 			BlockingBackChannel backChannel = initBackChannel();
 //			SuperstepBarrier barrier = initSuperstepBarrier();
 			ABSPClockHolder clockHolder = initClockHolder();
@@ -277,7 +275,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 				// setup the index for the solution set
 				@SuppressWarnings("unchecked")
 				MutableObjectIterator<X> solutionSetInput = (MutableObjectIterator<X>) createInputIterator(inputReaders[initialSolutionSetInput], solutionTypeSerializer);
-				
+
 				// read the initial solution set
 				if (objectSolutionSet) {
 					solutionSetObjectMap = initJoinHashMap();
@@ -293,14 +291,13 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 					solutionSetUpdateBarrier = new SolutionSetUpdateBarrier();
 					SolutionSetUpdateBarrierBroker.instance().handIn(brokerKey, solutionSetUpdateBarrier);
 				}
-			}
-			else {
+			} else {
 				// bulk iteration case
 //				initialSolutionSetInput = -1;
 				@SuppressWarnings("unchecked")
 				TypeSerializerFactory<X> solSer = (TypeSerializerFactory<X>) feedbackTypeSerializer;
 				solutionTypeSerializer = solSer;
-				
+
 				// = termination Criterion tail
 				if (waitForSolutionSetUpdate) {
 					solutionSetUpdateBarrier = new SolutionSetUpdateBarrier();
@@ -349,7 +346,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 //				sendEventToSync(new WorkerDoneEvent(workerIndex, aggregatorRegistry.getAllAggregators()));
 				clockHolder.clock();
-				log.info(formatLogString("Worker is now clock "+ clockHolder.getClock()));
+				log.info(formatLogString("Worker is now clock " + clockHolder.getClock()));
 
 				sendEventToSync(new WorkerClockEvent(workerIndex, clockHolder.getClock(), aggregatorRegistry.getAllAggregators()));
 
@@ -364,27 +361,27 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 				if (clockHolder.terminationSignaled()) {
 					if (log.isInfoEnabled()) {
 						log.info(formatLogString("head received termination request in iteration ["
-							+ currentIteration()
-							+ "]"));
+								+ currentIteration()
+								+ "]"));
 					}
 					requestTermination();
 					nextStepKickoff.signalTermination();
 				} else {
 					incrementIterationCounter();
-					if(clockHolder.isJustBeenReleased()) {
 
+					//WARNING: Aggregators are only synchornized at the absp barrier
+					if (clockHolder.isJustBeenReleased()) {
 						String[] globalAggregateNames = clockHolder.getAggregatorNames();
 						Value[] globalAggregates = clockHolder.getAggregates();
 						aggregatorRegistry.updateGlobalAggregatesAndReset(globalAggregateNames, globalAggregates);
 						clockHolder.resetJustBeenReleased();
-
 					}
 					nextStepKickoff.triggerNextSuperstep();
 				}
 			}
 
 			if (log.isInfoEnabled()) {
-				log.info(formatLogString("streaming out final result after [" + currentIteration() + "] iterations and clock "+ clockHolder.getClock()));
+				log.info(formatLogString("streaming out final result after [" + currentIteration() + "] iterations and clock " + clockHolder.getClock()));
 			}
 
 			if (isWorksetIteration) {
@@ -424,7 +421,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 			out.collect(record);
 		}
 	}
-	
+
 	private void streamSolutionSetToFinalOutput(CompactingHashTable<X> hashTable) throws IOException {
 		final MutableObjectIterator<X> results = hashTable.getEntryIterator();
 		final Collector<X> output = this.finalOutputCollector;
@@ -434,7 +431,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 			output.collect(record);
 		}
 	}
-	
+
 	@SuppressWarnings("unchecked")
 	private void streamSolutionSetToFinalOutput(JoinHashMap<X> soluionSet) throws IOException {
 		final Collector<X> output = this.finalOutputCollector;
@@ -445,7 +442,7 @@ public class ABSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abs
 
 	private void feedBackSuperstepResult(DataInputView superstepResult) {
 		this.inputs[this.feedbackDataInput] =
-			new InputViewIterator<Y>(superstepResult, this.feedbackTypeSerializer.getSerializer());
+				new InputViewIterator<Y>(superstepResult, this.feedbackTypeSerializer.getSerializer());
 	}
 
 	private void sendEndOfSuperstepToAllIterationOutputs() throws IOException, InterruptedException {

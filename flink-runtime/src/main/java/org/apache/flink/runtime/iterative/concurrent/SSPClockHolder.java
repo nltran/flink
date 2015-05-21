@@ -23,21 +23,19 @@ import java.util.concurrent.CountDownLatch;
 
 import org.apache.flink.runtime.event.task.TaskEvent;
 import org.apache.flink.runtime.util.event.EventListener;
-import org.apache.flink.runtime.iterative.event.AllWorkersDoneEvent;
 import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
-import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.types.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * A resettable one-shot latch.
- * Replaces the SuperStepBarrier held by the {@link IterationHeadPactTask}
+ * Replaces the SuperStepBarrier held by the {@link org.apache.flink.runtime.iterative.task.IterationHeadPactTask}
  */
-public class ABSPClockHolder implements EventListener<TaskEvent> {
+public class SSPClockHolder implements EventListener<TaskEvent> {
 
-	private static final Logger log = LoggerFactory.getLogger(ABSPClockHolder.class);
+	private static final Logger log = LoggerFactory.getLogger(SSPClockHolder.class);
 
 	private final ClassLoader userCodeClassLoader;
 
@@ -47,7 +45,7 @@ public class ABSPClockHolder implements EventListener<TaskEvent> {
 
 	private String[] aggregatorNames;
 	private Value[] aggregates;
-	
+
 	private int ownClock =0;
 	private int currentClock=0;
 	private int absp = 3;
@@ -64,8 +62,8 @@ public class ABSPClockHolder implements EventListener<TaskEvent> {
 	public boolean isAtABSPLimit() {
 		return (ownClock == currentClock+absp);
 	}
-	
-	public ABSPClockHolder(ClassLoader userCodeClassLoader) {
+
+	public SSPClockHolder(ClassLoader userCodeClassLoader) {
 		this.userCodeClassLoader = userCodeClassLoader;
 	}
 

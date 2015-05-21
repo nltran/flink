@@ -18,55 +18,53 @@
 
 package org.apache.flink.runtime.iterative.task;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-
+import com.gs.collections.api.bag.MutableBag;
+import com.gs.collections.impl.bag.mutable.HashBag;
 import org.apache.flink.api.common.aggregators.Aggregator;
 import org.apache.flink.runtime.event.task.TaskEvent;
 import org.apache.flink.runtime.iterative.event.WorkerClockEvent;
 import org.apache.flink.runtime.util.event.EventListener;
 import org.apache.flink.types.Value;
-
-import com.gs.collections.api.bag.MutableBag;
-import com.gs.collections.impl.bag.mutable.HashBag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 
-	private static final Logger log = LoggerFactory.getLogger(ClockSyncEventHandler.class);
-	
+	private static final Logger log = LoggerFactory.getLogger(SSPClockSyncEventHandler.class);
+
 	private final ClassLoader userCodeClassLoader;
-	
+
 	private final Map<String, Aggregator<?>> aggregators;
 
 //	private final int numberOfEventsUntilEndOfSuperstep;
 
 //	private int workerDoneEventCounter;
-	
+
 	private boolean endOfSuperstep;
-	
+
 	private int absp = 3;
-	
+
 	private int currentClock = 0;
 
 	private final int numberOfEventsUntilEndOfSuperstep;
-	
-	
+
+
 	private final MutableBag<Integer> workersClocks;
 
 	private Map<Integer, Integer> clocks;
 
 
-	public ClockSyncEventHandler(int numberOfEventsUntilEndOfSuperstep,Map<String, Aggregator<?>> aggregators, ClassLoader userCodeClassLoader) {
+	public ClockSyncEventHandler(int numberOfEventsUntilEndOfSuperstep, Map<String, Aggregator<?>> aggregators, ClassLoader userCodeClassLoader) {
 		this.userCodeClassLoader = userCodeClassLoader;
 		this.aggregators = aggregators;
 		this.numberOfEventsUntilEndOfSuperstep = numberOfEventsUntilEndOfSuperstep;
 		this.workersClocks = new HashBag<Integer>();
 		this.clocks = new HashMap<Integer, Integer>();
 	}
-	
+
 	private void workerClock(int workerInt) {
 		this.workersClocks.add(workerInt);
 	}
@@ -74,11 +72,11 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 	private void workerClock(int workerInt, int clock) {
 		this.clocks.put(workerInt, clock);
 	}
-	
+
 	private int computeCurrentClock() {
 		return workersClocks.occurrencesOf(workersClocks.min());
 	}
-	
+
 	public int getCurrentClock(){
 		return currentClock;
 	}
@@ -89,28 +87,28 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 //			onWorkerDoneEvent((WorkerDoneEvent) event);
 //			return;
 //		}
-		
+
 		if (WorkerClockEvent.class.equals(event.getClass())){
 			onWorkerClockEvent((WorkerClockEvent)event);
 			return;
 		}
-		
+
 		throw new IllegalStateException("Unable to handle event " + event.getClass().getName());
 	}
-	
+
 	private void onWorkerClockEvent(WorkerClockEvent workerClockEvent) {
 		String[] aggNames = workerClockEvent.getAggregatorNames();
 		Value[] aggregates = workerClockEvent.getAggregates(userCodeClassLoader);
-		
+
 		if (aggNames.length != aggregates.length) {
 			throw new RuntimeException("Inconsistent WorkerDoneEvent received!");
 		}
-		
+
 		int workerIndex = workerClockEvent.getWorkerIndex();
 		int workerClock = workerClockEvent.getWorkerClock();
 
 		log.info("Worker " + workerIndex +" is at clock "+ workerClock);
-		
+
 		int oldClock = currentClock;
 //		workerClock(workerIndex);
 		workerClock(workerIndex, workerClock);
@@ -132,9 +130,6 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 			this.endOfSuperstep = true;
 			Thread.currentThread().interrupt();
 		}
-
-
-
 	}
 
 //	private boolean allWorkersAtSameClock() {
@@ -199,11 +194,11 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 //			Thread.currentThread().interrupt();
 //		}
 //	}
-	
+
 	public boolean isEndOfSuperstep() {
 		return this.endOfSuperstep;
 	}
-	
+
 	public void resetEndOfSuperstep() {
 		this.endOfSuperstep = false;
 	}

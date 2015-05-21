@@ -32,11 +32,9 @@ import org.apache.flink.api.common.aggregators.Aggregator;
 import org.apache.flink.api.common.aggregators.AggregatorWithName;
 import org.apache.flink.api.common.aggregators.ConvergenceCriterion;
 import org.apache.flink.runtime.io.network.api.reader.MutableRecordReader;
-import org.apache.flink.runtime.iterative.event.AllWorkersDoneEvent;
 import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
 import org.apache.flink.runtime.iterative.event.WorkerClockEvent;
-import org.apache.flink.runtime.iterative.event.WorkerDoneEvent;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.operators.RegularPactTask;
 import org.apache.flink.runtime.operators.util.TaskConfig;
@@ -47,12 +45,12 @@ import com.google.common.base.Preconditions;
 /**
  * The task responsible for synchronizing all iteration heads, implemented as an output task. This task
  * will never see any data.
- * In each superstep, it simply waits until it has received a {@link WorkerDoneEvent} from each head and will send back
- * an {@link AllWorkersDoneEvent} to signal that the next superstep can begin.
+ * In each superstep, it simply waits until it has received a {@link org.apache.flink.runtime.iterative.event.WorkerDoneEvent} from each head and will send back
+ * an {@link org.apache.flink.runtime.iterative.event.AllWorkersDoneEvent} to signal that the next superstep can begin.
  */
-public class ClockSinkTask extends AbstractInvokable implements Terminable {
+public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 
-	private static final Logger log = LoggerFactory.getLogger(ClockSinkTask.class);
+	private static final Logger log = LoggerFactory.getLogger(SSPClockSinkTask.class);
 
 	private MutableRecordReader<IntValue> headEventReader;
 	
