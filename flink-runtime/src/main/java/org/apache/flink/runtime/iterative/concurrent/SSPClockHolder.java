@@ -21,6 +21,7 @@ package org.apache.flink.runtime.iterative.concurrent;
 
 import org.apache.flink.runtime.event.task.TaskEvent;
 import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
+import org.apache.flink.runtime.iterative.event.IterationEventWithAggregators;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
 import org.apache.flink.runtime.util.event.EventListener;
 import org.apache.flink.types.Value;
@@ -41,13 +42,15 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 
 	private boolean terminationSignaled = false;
 
+	private boolean hasAggregators;
+
 	private CountDownLatch latch;
 
 	private String[] aggregatorNames;
 	private Value[] aggregates;
 
-	private int ownClock =0;
-	private int currentClock=0;
+	private int ownClock = 0;
+	private int currentClock = 0;
 	private int absp = 3;
 	private boolean justBeenReleased = false;
 
@@ -55,86 +58,125 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 		return justBeenReleased;
 	}
 
-	public void resetJustBeenReleased(){
+	public void resetJustBeenReleased() {
 		justBeenReleased = false;
 	}
 
 	public boolean isAtABSPLimit() {
-		return (ownClock == currentClock+absp);
+		return (ownClock == currentClock + absp);
 	}
 
 	public SSPClockHolder(ClassLoader userCodeClassLoader) {
 		this.userCodeClassLoader = userCodeClassLoader;
 	}
 
-	public void clock(){
+	public void clock() {
 		this.ownClock++;
 
 	}
-	
-	public int getClock(){
+
+	public int getClock() {
 		return this.ownClock;
 	}
-	
 
-	/** setup the barrier, has to be called at the beginning of each superstep */
+
+	/**
+	 * setup the barrier, has to be called at the beginning of each superstep
+	 */
 	public void setup() {
 //		if(ownClock > currentClock + absp )
-			latch = new CountDownLatch(1);
+		latch = new CountDownLatch(1);
 	}
 
-	/** wait on the barrier */
+	/**
+	 * wait on the barrier
+	 */
 	public void waitForNextClock() throws InterruptedException {
-		if(ownClock > currentClock + absp ) {
-			log.info("Worker is ahead of absp bound (" + absp + ")  : current clock:" + currentClock +" ownclock: " + ownClock);
+		if (ownClock > currentClock + absp) {
+			log.info("Worker is ahead of absp bound (" + absp + ")  : current clock:" + currentClock + " ownclock: " + ownClock);
 			setup();
 			latch.await();
 		}
 
-		log.info("Worker can continue moving ahead (" + absp + ")  : current clock:" + currentClock +" ownclock: " + ownClock);
+		log.info("Worker can continue moving ahead (" + absp + ")  : current clock:" + currentClock + " ownclock: " + ownClock);
 
 	}
 
 	public String[] getAggregatorNames() {
 		return aggregatorNames;
 	}
-	
+
 	public Value[] getAggregates() {
 		return aggregates;
 	}
 
-	/** barrier will release the waiting thread if an event occurs
-	 * @param event*/
+	/**
+	 * barrier will release the waiting thread if an event occurs
+	 *
+	 * @param event
+	 */
 	@Override
 	public void onEvent(TaskEvent event) {
 		if (event instanceof TerminationEvent) {
 			terminationSignaled = true;
+			latch.countDown();
 		}
-		
-		else if (event instanceof ClockTaskEvent) {
-			ClockTaskEvent cte = (ClockTaskEvent) event;
-			currentClock = cte.getClock();
-			aggregatorNames = cte.getAggregatorNames();
-			aggregates = cte.getAggregates(userCodeClassLoader);
-			if (ownClock > currentClock + absp){
-				return;
+
+		else if (event instanceof IterationEventWithAggregators) {
+			IterationEventWithAggregators iewa = (IterationEventWithAggregators) event;
+			aggregatorNames = iewa.getAggregatorNames();
+			aggregates = iewa.getAggregates(userCodeClassLoader);
+			this.hasAggregators = true;
+
+			if(event instanceof ClockTaskEvent) {
+				ClockTaskEvent cte = (ClockTaskEvent) event;
+				currentClock = cte.getClock();
+				aggregatorNames = cte.getAggregatorNames();
+				aggregates = cte.getAggregates(userCodeClassLoader);
+				this.hasAggregators = true;
+				if (ownClock > currentClock + absp) {
+					return;
+				}
+				else {
+					latch.countDown();
+				}
 			}
 		}
 
-//		else if (event instanceof AllWorkersDoneEvent) {
-//			AllWorkersDoneEvent wde = (AllWorkersDoneEvent) event;
-//			aggregatorNames = wde.getAggregatorNames();
-//			aggregates = wde.getAggregates(userCodeClassLoader);
+//		else if (event instanceof AggregatorEvent) {
+//			AggregatorEvent ev = (AggregatorEvent) event;
+//			aggregatorNames = ev.getAggregatorNames();
+//			aggregates = ev.getAggregates(userCodeClassLoader);
+//			this.hasAggregators = true;
+//
+//		} else if (event instanceof ClockTaskEvent) {
+//			ClockTaskEvent cte = (ClockTaskEvent) event;
+//			currentClock = cte.getClock();
+//			aggregatorNames = cte.getAggregatorNames();
+//			aggregates = cte.getAggregates(userCodeClassLoader);
+//			this.hasAggregators = true;
+//			if (ownClock > currentClock + absp) {
+//				return;
+//			}
+//			latch.countDown();
 //		}
-		else {
-			throw new IllegalArgumentException("Unknown event type.");
-		}
+//
+//		else {
+//			throw new IllegalArgumentException("Unknown event type.");
+//		}
+//
 
-		latch.countDown();
-		justBeenReleased = true;
 	}
 
 	public boolean terminationSignaled() {
 		return terminationSignaled;
+	}
+
+	public boolean hasAggregators() {
+		return hasAggregators;
+	}
+
+	public void resetHasAggregators() {
+		this.hasAggregators = false;
 	}
 }

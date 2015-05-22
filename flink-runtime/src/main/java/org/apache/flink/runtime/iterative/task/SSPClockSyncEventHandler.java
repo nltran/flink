@@ -49,6 +49,8 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 
 	private boolean clockUpdated;
 
+	private boolean aggUpdated;
+
 	private int absp = 3;
 
 	private int currentClock = 0;
@@ -123,6 +125,8 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 			@SuppressWarnings("unchecked")
 			Aggregator<Value> aggregator = (Aggregator<Value>) this.aggregators.get(aggNames[i]);
 			aggregator.aggregate(aggregates[i]);
+			this.aggUpdated = true;
+			Thread.currentThread().interrupt();
 		}
 //		}
 
@@ -227,5 +231,13 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 
 	public void resetClockUpdated() {
 		this.clockUpdated = false;
+	}
+
+	public boolean isAggUpdated() {
+		return this.aggUpdated;
+	}
+
+	public void resetAggUpdated() {
+		this.aggUpdated = false;
 	}
 }

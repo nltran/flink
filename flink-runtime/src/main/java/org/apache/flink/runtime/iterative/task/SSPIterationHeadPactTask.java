@@ -30,10 +30,7 @@ import org.apache.flink.runtime.io.disk.InputViewIterator;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.iterative.concurrent.*;
-import org.apache.flink.runtime.iterative.event.AllWorkersDoneEvent;
-import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
-import org.apache.flink.runtime.iterative.event.TerminationEvent;
-import org.apache.flink.runtime.iterative.event.WorkerClockEvent;
+import org.apache.flink.runtime.iterative.event.*;
 import org.apache.flink.runtime.iterative.io.SerializedUpdateBuffer;
 import org.apache.flink.runtime.operators.RegularPactTask;
 import org.apache.flink.runtime.operators.hash.CompactingHashTable;
@@ -220,13 +217,21 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 		return barrier;
 	}
 
-	private ABSPClockHolder initClockHolder() {
-		ABSPClockHolder clockHolder = new ABSPClockHolder(getUserCodeClassLoader());
+	private SSPClockHolder initClockHolder() {
+		SSPClockHolder clockHolder = new SSPClockHolder(getUserCodeClassLoader());
+
 		// listens from the sink
 		this.toSync.subscribeToEvent(clockHolder, ClockTaskEvent.class);
 		this.toSync.subscribeToEvent(clockHolder, TerminationEvent.class);
+		this.toSync.subscribeToEvent(clockHolder, AggregatorEvent.class);
 		return clockHolder;
 	}
+
+//	private SSPAggregatorEventListener initAggListener(){
+//		SSPAggregatorEventListener aggListener = new SSPAggregatorEventListener(getUserCodeClassLoader());
+//		this.toSync.subscribeToEvent(aggListener, AggregatorEvent.class);
+//		return aggListener;
+//	}
 
 	@Override
 	public void run() throws Exception {
@@ -248,7 +253,8 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 
 			BlockingBackChannel backChannel = initBackChannel();
 //			SuperstepBarrier barrier = initSuperstepBarrier();
-			ABSPClockHolder clockHolder = initClockHolder();
+			SSPClockHolder clockHolder = initClockHolder();
+//			SSPAggregatorEventListener aggListener = initAggListener();
 			SolutionSetUpdateBarrier solutionSetUpdateBarrier = null;
 
 			feedbackDataInput = config.getIterationHeadPartialSolutionOrWorksetInputIndex();
@@ -358,10 +364,13 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 					nextStepKickoff.signalTermination();
 				} else {
 					incrementIterationCounter();
-					String[] globalAggregateNames = clockHolder.getAggregatorNames();
-					Value[] globalAggregates = clockHolder.getAggregates();
-					aggregatorRegistry.updateGlobalAggregatesAndReset(globalAggregateNames, globalAggregates);
-					clockHolder.resetJustBeenReleased();
+					if(clockHolder.hasAggregators()){
+						log.info(formatLogString("clockHolder has aggregator"));
+						String[] globalAggregateNames = clockHolder.getAggregatorNames();
+						Value[] globalAggregates = clockHolder.getAggregates();
+						aggregatorRegistry.updateGlobalAggregatesAndReset(globalAggregateNames, globalAggregates);
+						clockHolder.resetHasAggregators();
+					}
 					nextStepKickoff.triggerNextSuperstep();
 				}
 			}

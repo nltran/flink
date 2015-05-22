@@ -25,6 +25,7 @@ import org.apache.flink.api.common.aggregators.AggregatorWithName;
 import org.apache.flink.api.common.aggregators.ConvergenceCriterion;
 import org.apache.flink.runtime.event.task.TaskEvent;
 import org.apache.flink.runtime.io.network.api.reader.MutableRecordReader;
+import org.apache.flink.runtime.iterative.event.AggregatorEvent;
 import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
 import org.apache.flink.runtime.iterative.event.WorkerClockEvent;
@@ -68,6 +69,10 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 	private int maxNumberOfIterations;
 
 	private final AtomicBoolean terminated = new AtomicBoolean(false);
+
+	private boolean terminate = false;
+
+	private final int absp = 3;
 
 
 	// --------------------------------------------------------------------------------------------
@@ -137,12 +142,19 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 
 //				AllWorkersDoneEvent allWorkersDoneEvent = new AllWorkersDoneEvent(aggregators);
 
-				if(eventHandler.isClockUpdated()) {
+				if(eventHandler.isClockUpdated() && !terminate) {
 					int currentClock = eventHandler.getCurrentClock();
 					ClockTaskEvent clockTaskEvent = new ClockTaskEvent(currentClock, aggregators);
 					sendToAllWorkers(clockTaskEvent);
 					eventHandler.resetClockUpdated();
 					log.info(formatLogString("Clock is now "+ currentClock +" and current iteration is "+ currentIteration));
+					currentIteration++;
+				}
+				else if(eventHandler.isAggUpdated()) {
+					AggregatorEvent ae = new AggregatorEvent(aggregators);
+					sendToAllWorkers(ae);
+					eventHandler.resetAggUpdated();
+					log.info(formatLogString("Updating aggregators"));
 				}
 
 				// reset all aggregators
@@ -150,7 +162,6 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 //				for (Aggregator<?> agg : aggregators.values()) {
 //					agg.reset();
 //				}
-				currentIteration++;
 
 //				notifyMonitor(IterationMonitoring.Event.SYNC_FINISHED, currentIteration);
 			}
@@ -167,8 +178,9 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 
 
 		if (maxNumberOfIterations == currentIteration) {
+			terminate = true;
 
-			if (eventHandler.allWorkersAtClock(eventHandler.getCurrentClock() + 3)) {
+			if (eventHandler.allWorkersAtClock(maxNumberOfIterations + absp)) {
 				if (log.isInfoEnabled()) {
 					log.info(formatLogString("maximum number of iterations [" + currentIteration
 							+ "] reached, terminating..."));

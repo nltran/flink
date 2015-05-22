@@ -43,7 +43,7 @@ public class SSPJob{
 		IterativeDataSet<Integer> loop = set.iterate(10);
 		//step function
 
-		DataSet<Integer> newMockValues =  loop.map(new incrementer2());
+		DataSet<Integer> newMockValues =  loop.map(new plainIncrementer());
 		//
 		DataSet<Integer> finalMockValues = loop.closeWith(newMockValues);
 
@@ -114,4 +114,11 @@ public class SSPJob{
 		}
 	}
 
+	public static final class plainIncrementer implements MapFunction<Integer, Integer> {
+		@Override
+		public Integer map(Integer value) throws Exception {
+			int result = value + 1;
+			return result;
+		}
+	}
 }
