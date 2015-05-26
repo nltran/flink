@@ -135,11 +135,11 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 			int newClockCandidate = getMinClock();
 			if (newClockCandidate > currentClock) {
 				currentClock = newClockCandidate;
-				this.endOfSuperstep = true;
 				this.clockUpdated = true;
 				Thread.currentThread().interrupt();
 			}
 		}
+		this.endOfSuperstep = true;
 
 
 //		if(allWorkersAtClock( currentClock + absp + 1) && howManyWorkersAtClock(currentClock + absp + 1) % numberOfEventsUntilEndOfSuperstep ==0) {
