@@ -19,7 +19,6 @@
 package org.apache.flink.runtime.iterative.task;
 
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 
 import org.apache.flink.api.common.aggregators.Aggregator;

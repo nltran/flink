@@ -38,6 +38,7 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 			IgniteConfiguration cfg1 = new IgniteConfiguration();
 			cfg1.setGridName(name);
 			cfg1.setPeerClassLoadingEnabled(true);
+			Ignition.setClientMode(true);
 			this.ignite = Ignition.start(cfg1);
 
 //			IgniteConfiguration icfg = new IgniteConfiguration();

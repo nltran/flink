@@ -12,7 +12,7 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 
 	private ParameterServer psInstance = null;
 	private int wid;
-	private int nc = 0;
+//	private int nc = 0;
 
 	@Override
 	public void open(Configuration parameters) throws Exception {
@@ -22,7 +22,9 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 		if (psInstance == null) {
 			psInstance = new ParameterServerIgniteImpl(Integer.toString(wid));
 		}
-		System.out.println("nc :" + ++nc);
+//		System.out.println("nc :" + ++nc);
+		System.out.println("taskName is:" + getRuntimeContext().getTaskName());
+
 	}
 
 	protected ParameterServer getParameterServer() {

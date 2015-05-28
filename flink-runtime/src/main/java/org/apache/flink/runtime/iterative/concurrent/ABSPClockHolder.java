@@ -23,7 +23,6 @@ import java.util.concurrent.CountDownLatch;
 
 import org.apache.flink.runtime.event.task.TaskEvent;
 import org.apache.flink.runtime.util.event.EventListener;
-import org.apache.flink.runtime.iterative.event.AllWorkersDoneEvent;
 import org.apache.flink.runtime.iterative.event.ClockTaskEvent;
 import org.apache.flink.runtime.iterative.event.TerminationEvent;
 import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
