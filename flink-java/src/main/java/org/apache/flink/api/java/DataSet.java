@@ -18,17 +18,14 @@
 
 package org.apache.flink.api.java;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
+import com.google.common.base.Preconditions;
 import org.apache.commons.lang3.Validate;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.accumulators.SerializedListAccumulator;
 import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.GroupCombineFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.GroupCombineFunction;
 import org.apache.flink.api.common.functions.GroupReduceFunction;
 import org.apache.flink.api.common.functions.InvalidTypesException;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -38,10 +35,10 @@ import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.io.FileOutputFormat;
 import org.apache.flink.api.common.io.OutputFormat;
 import org.apache.flink.api.common.operators.Order;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.operators.base.CrossOperatorBase.CrossHint;
 import org.apache.flink.api.common.operators.base.JoinOperatorBase.JoinHint;
 import org.apache.flink.api.common.operators.base.PartitionOperatorBase.PartitionMethod;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.aggregation.Aggregations;
 import org.apache.flink.api.java.functions.FirstReducer;
@@ -64,8 +61,9 @@ import org.apache.flink.api.java.operators.DeltaIteration;
 import org.apache.flink.api.java.operators.DistinctOperator;
 import org.apache.flink.api.java.operators.FilterOperator;
 import org.apache.flink.api.java.operators.FlatMapOperator;
-import org.apache.flink.api.java.operators.GroupReduceOperator;
 import org.apache.flink.api.java.operators.GroupCombineOperator;
+import org.apache.flink.api.java.operators.GroupReduceOperator;
+import org.apache.flink.api.java.operators.IterationStrategy;
 import org.apache.flink.api.java.operators.IterativeDataSet;
 import org.apache.flink.api.java.operators.JoinOperator.JoinOperatorSets;
 import org.apache.flink.api.java.operators.Keys;
@@ -90,7 +88,9 @@ import org.apache.flink.core.fs.FileSystem.WriteMode;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.util.AbstractID;
 
-import com.google.common.base.Preconditions;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A DataSet represents a collection of elements of the same type.<br/>
@@ -978,6 +978,19 @@ public abstract class DataSet<T> {
 	 */
 	public IterativeDataSet<T> iterate(int maxIterations) {
 		return new IterativeDataSet<T>(getExecutionEnvironment(), getType(), this, maxIterations);
+	}
+
+	/**
+	 * Same as {@link org.apache.flink.api.java.DataSet#iterate(int)} but using SSP iterations with a default slack of 3.
+	 *
+	 * @param maxIterations The maximum number of times that the iteration is executed.
+	 * @return An IterativeDataSet that marks the start of the iterative part and needs to be closed by
+	 *         {@link org.apache.flink.api.java.operators.IterativeDataSet#closeWith(DataSet)}.
+	 *
+	 * @see org.apache.flink.api.java.operators.IterativeDataSet
+	 */
+	public IterativeDataSet<T> iterateWithSSP(int maxIterations) {
+		return new IterativeDataSet<T>(getExecutionEnvironment(), getType(), this, maxIterations, IterationStrategy.SSP);
 	}
 	
 	/**

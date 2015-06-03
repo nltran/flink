@@ -26,6 +26,7 @@ import org.apache.flink.api.common.aggregators.LongSumAggregator;
 import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.cache.DistributedCache.DistributedCacheEntry;
 import org.apache.flink.api.common.distributions.DataDistribution;
+import org.apache.flink.api.common.operators.base.BulkIterationStrategy;
 import org.apache.flink.api.common.operators.util.UserCodeWrapper;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.configuration.ConfigConstants;
@@ -51,7 +52,9 @@ import org.apache.flink.optimizer.plan.WorksetPlanNode;
 import org.apache.flink.runtime.io.network.DataExchangeMode;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.iterative.convergence.WorksetEmptyConvergenceCriterion;
+import org.apache.flink.runtime.iterative.task.IterationHeadPactTask;
 import org.apache.flink.runtime.iterative.task.IterationIntermediatePactTask;
+import org.apache.flink.runtime.iterative.task.IterationSynchronizationSinkTask;
 import org.apache.flink.runtime.iterative.task.IterationTailPactTask;
 import org.apache.flink.runtime.iterative.task.SSPClockSinkTask;
 import org.apache.flink.runtime.iterative.task.SSPIterationHeadPactTask;
@@ -874,7 +877,7 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 	private AbstractJobVertex createBulkIterationHead(BulkPartialSolutionPlanNode pspn) {
 		// get the bulk iteration that corresponds to this partial solution node
 		final BulkIterationPlanNode iteration = pspn.getContainingIterationNode();
-		
+
 		// check whether we need an individual vertex for the partial solution, or whether we
 		// attach ourselves to the vertex of the parent node. We can combine the head with a node of 
 		// the step function, if
@@ -900,11 +903,14 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		} else {
 			merge = false;
 		}
-		
+
 		// create or adopt the head vertex
 		final AbstractJobVertex toReturn;
 		final AbstractJobVertex headVertex;
 		final TaskConfig headConfig;
+
+		BulkIterationStrategy s = pspn.getContainingIterationNode().getIterationNode().getIterationContract().getStrategy();
+
 		if (merge) {
 			final PlanNode successor = pspn.getOutgoingChannels().get(0).getTarget();
 			headVertex = (AbstractJobVertex) this.vertices.get(successor);
@@ -915,9 +921,13 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			}
 			
 			// reset the vertex type to iteration head
-//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			if(s.equals(BulkIterationStrategy.PLAIN) ) {
+				headVertex.setInvokableClass(IterationHeadPactTask.class);
+			}
+			else if(s.equals(BulkIterationStrategy.SSP)) {
 //			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
-			headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
+				headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
+			}
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			toReturn = null;
 		} else {
@@ -925,9 +935,13 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			// everything else happens in the post visit, after the input (the initial partial solution)
 			// is connected.
 			headVertex = new AbstractJobVertex("PartialSolution ("+iteration.getNodeName()+")");
-//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			if(s.equals(BulkIterationStrategy.PLAIN) ) {
+				headVertex.setInvokableClass(IterationHeadPactTask.class);
+			}
+			else if(s.equals(BulkIterationStrategy.SSP)) {
 //			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
-			headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
+				headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
+			}
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			headConfig.setDriver(NoOpDriver.class);
 			toReturn = headVertex;
@@ -987,9 +1001,9 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			}
 			
 			// reset the vertex type to iteration head
-//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			headVertex.setInvokableClass(IterationHeadPactTask.class);
 //			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
-			headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
+//			headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			toReturn = null;
 		} else {
@@ -997,9 +1011,9 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 			// everything else happens in the post visit, after the input (the initial partial solution)
 			// is connected.
 			headVertex = new AbstractJobVertex("IterationHead("+iteration.getNodeName()+")");
-//			headVertex.setInvokableClass(IterationHeadPactTask.class);
+			headVertex.setInvokableClass(IterationHeadPactTask.class);
 //			headVertex.setInvokableClass(ABSPIterationHeadPactTask.class);
-			headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
+//			headVertex.setInvokableClass(SSPIterationHeadPactTask.class);
 			headConfig = new TaskConfig(headVertex.getConfiguration());
 			headConfig.setDriver(NoOpDriver.class);
 			toReturn = headVertex;
@@ -1216,9 +1230,14 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		
 		// --------------------------- create the sync task ---------------------------
 		final AbstractJobVertex sync = new AbstractJobVertex("Sync(" + bulkNode.getNodeName() + ")");
-//		sync.setInvokableClass(IterationSynchronizationSinkTask.class);
+		BulkIterationStrategy s = ((BulkIterationPlanNode) descr.getIterationNode()).getPartialSolutionPlanNode().getContainingIterationNode().getIterationNode().getIterationContract().getStrategy();
+		if(s.equals(BulkIterationStrategy.PLAIN)) {
+			sync.setInvokableClass(IterationSynchronizationSinkTask.class);
+		}
+		else if(s.equals(BulkIterationStrategy.SSP)){
 //		sync.setInvokableClass(ClockSinkTask.class);
-		sync.setInvokableClass(SSPClockSinkTask.class);
+			sync.setInvokableClass(SSPClockSinkTask.class);
+		}
 		sync.setParallelism(1);
 		this.auxVertices.add(sync);
 		
@@ -1354,9 +1373,9 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		final TaskConfig syncConfig;
 		{
 			final AbstractJobVertex sync = new AbstractJobVertex("Sync (" + iterNode.getNodeName() + ")");
-//			sync.setInvokableClass(IterationSynchronizationSinkTask.class);
+			sync.setInvokableClass(IterationSynchronizationSinkTask.class);
 //			sync.setInvokableClass(ClockSinkTask.class);
-			sync.setInvokableClass(SSPClockSinkTask.class);
+//			sync.setInvokableClass(SSPClockSinkTask.class);
 			sync.setParallelism(1);
 			this.auxVertices.add(sync);
 			
