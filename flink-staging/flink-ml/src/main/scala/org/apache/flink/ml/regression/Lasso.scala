@@ -233,7 +233,7 @@ class UpdateApproximation(beta: Double, line_search: Boolean = false)
     val v = gamma * beta * signum(-update.value)
 
     if (model.isEmpty()) {
-      new_residual = residual - s_k * gamma
+      new_residual = residual.copy - s_k * gamma
       new_sol = SparseApproximation(update.atom.values.asDenseMatrix.t, Array(update.atom.idx), DenseVector[Double](v))
     }
     else {

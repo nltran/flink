@@ -33,14 +33,14 @@ import org.apache.flink.ml.regression.{LassoWithPS, ColumnVector, Lasso}
 object LassoRegression {
   def main(args: Array[String]) {
     val EPSILON = 1e-3
-    val PARALLELISM = 2
-    val NUMITER = 100
+    val PARALLELISM = 1
+    val NUMITER = 10
     val NORMALIZE = false
     val LINESEARCH = true
-    val NOISY = false
+    val NOISE_LEVEL = 0.0
     val OPT = "GR"
 
-    val dimension = 64
+    val dimension = 512
     val size = dimension
 
     val env = ExecutionEnvironment.getExecutionEnvironment
@@ -53,19 +53,17 @@ object LassoRegression {
     alpha.update(3, 0.98)
     alpha.update(4, 0.67)
 
-    val beta = 1.0//sum(abs(alpha))
+    val beta = sum(abs(alpha))
 
-    val noise = if (NOISY) DenseVector.rand[Double](dimension) * 0.001 else DenseVector.zeros[Double](dimension)
+    val noise = DenseVector.rand[Double](dimension) *= NOISE_LEVEL
 
-    val y = X * alpha + noise
-
-    val Y = env.fromElements(y)
+    val Y = env.fromElements(X * alpha + noise)
 
     val columns = env.fromCollection({
       0 until size
     } map { i => ColumnVector(i, X(::, i).copy) })
 
-    val fw = new LassoWithPS(beta = beta,
+    val fw = new Lasso(beta = beta,
       numIter = NUMITER,
       normalize = NORMALIZE,
       line_search = LINESEARCH,
@@ -74,7 +72,7 @@ object LassoRegression {
 
     // Sink
     env.fromElements(model).print()
-    //println(env.getExecutionPlan())
+//    println(env.getExecutionPlan())
     env.execute()
   }
 }

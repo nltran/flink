@@ -21,10 +21,10 @@ class LassoWithPS(beta: Double,
   private var _coef: SparseVector[Double] = null
 
   def fit(data: DataSet[ColumnVector], target: DataSet[DenseVector[Double]]): LassoModel = {
-    val Y = if (normalize) target map { x => breeze.linalg.normalize(x) } else target
+    val Y = if (normalize) target map { x => breeze.linalg.normalize(x.copy) } else target
 
     // Initialize parameter
-    val initial = Y map { x => (x.copy, SparseParameterElement.empty) }
+    val initial = Y map { x => (x, SparseParameterElement.empty) }
 
     val matrices = data partitionCustom(new ColumnPartitioner, "idx") mapPartition {
       columns => {
@@ -44,8 +44,11 @@ class LassoWithPS(beta: Double,
 
         val residual_param_gap = matrices map {
           new UpdateParameter("alpha", beta, line_search)
-        } withBroadcastSet(residual, "residual")
+        } withBroadcastSet(Y, "Y") withBroadcastSet(residual, "residual")
 
+        // Seems that the duality gap in asynchronous setting is no longer a positive value at each iteration.
+        // Thus we take the absolute value of the dot product.
+        // Is it correct ?
         val termination = residual_param_gap filter {
           tuple => abs(tuple._3) >= epsilon
         }
@@ -58,7 +61,7 @@ class LassoWithPS(beta: Double,
       }
     }
 
-    val m = data.count.toInt
+    val m = data.count().toInt
 
     this._coef = ((iteration collect) head)._2.getValue.toSparseVector(m)
 
@@ -68,7 +71,7 @@ class LassoWithPS(beta: Double,
 
 // Case classes
 case class LassoModel(coef: SparseVector[Double]) {
-  override def toString(): String = {
+  override def toString: String = {
     if (coef == null) "Empty model."
     else coef.toString()
   }
@@ -79,7 +82,7 @@ case class AtomSet(matrix: DenseMatrix[Double], index: Array[Int])
 // Parameter elements
 
 object SparseParameterElement {
-  def empty(): SparseParameterElement = {
+  def empty: SparseParameterElement = {
     new SparseParameterElement
   }
 }
@@ -99,40 +102,17 @@ case class SparseParameterElement(clock: Int = 0,
 
 // Rich map functions
 
-class InitParameter(id: String) extends RichMapFunctionWithSSPServer[SparseParameterElement, SparseParameterElement] {
-  def map(value: SparseParameterElement): SparseParameterElement = {
-    println("##### Initializing parameter #####")
-    update(id, value)
-    value
-  }
-}
-
-class GetParameter(id: String) extends RichMapFunctionWithSSPServer[DenseVector[Double], SparseParameterElement] {
-  def map(in: DenseVector[Double]): SparseParameterElement = {
-    println("Trying to get a parameter value from the parameter server.")
-    val value = get(id).asInstanceOf[SparseParameterElement]
-    println("The value is " + value)
-    value
-  }
-}
-
 class UpdateParameter(id: String, beta: Double, line_search: Boolean)
   extends RichMapFunctionWithSSPServer[AtomSet, (DenseVector[Double], SparseParameterElement, Double)] {
-  var residual: DenseVector[Double] = null
+  var Y: DenseVector[Double] = null
 
   override def open(config: Configuration): Unit = {
     super.open(config)
-    residual = getRuntimeContext.getBroadcastVariable[DenseVector[Double]]("residual").get(0).copy
+    Y = getRuntimeContext.getBroadcastVariable[DenseVector[Double]]("Y").get(0).copy
   }
 
   def map(in: AtomSet): (DenseVector[Double], SparseParameterElement, Double) = {
     val iterationNumber = getIterationRuntimeContext.getSuperstepNumber
-    val grad = -in.matrix.t * residual
-    val j = argmax(abs(grad))
-    val index = in.index(j)
-    val atom = in.matrix(::, j).copy
-    val gradJ = grad(j)
-
 
     var new_residual: DenseVector[Double] = null
     var new_sol: SparseApproximation = null
@@ -141,13 +121,22 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
     if (el == null) el = new SparseParameterElement
     val model = el.getValue
 
+    val residual = if (model.isEmpty()) Y else Y - (model.atoms * model.coef)
+
+    val grad = -in.matrix.t * residual
+    val j = argmax(abs(grad))
+    val index = in.index(j)
+    val atom = in.matrix(::, j).copy
+    val gradJ = grad(j)
+
     val s_k: DenseVector[Double] = atom.copy * (signum(-gradJ) * beta)
     val A_temp = if (model.isEmpty()) s_k else s_k - model.atoms * model.coef
+    // TODO: Check this !
     val duality_gap = A_temp.t * residual
 
     // Compute step-size
     val gamma = if (line_search) {
-      max(0.0, min(1.0, (duality_gap) / (A_temp.t * A_temp)))
+      max(0.0, min(1.0, duality_gap / (A_temp.t * A_temp)))
     } else {
       val k = getIterationRuntimeContext.getSuperstepNumber - 1
       2.0 / (k + 2.0)
