@@ -66,7 +66,7 @@ public class ExecutionConfig implements Serializable {
 
 	private int parallelism = -1;
 
-	private int slack = 0;
+	private int slack = -1;
 
 	private int numberOfExecutionRetries = -1;
 
