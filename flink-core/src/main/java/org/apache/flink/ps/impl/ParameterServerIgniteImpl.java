@@ -39,6 +39,7 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 			cfg1.setGridName(name);
 			cfg1.setPeerClassLoadingEnabled(true);
 			cfg1.setCacheConfiguration(parameterCacheCfg, clockCacheCfg);
+			Ignition.setClientMode(true);
 			this.ignite = Ignition.start(cfg1);
 
 			parameterCache = ignite.getOrCreateCache(parameterCacheCfg);

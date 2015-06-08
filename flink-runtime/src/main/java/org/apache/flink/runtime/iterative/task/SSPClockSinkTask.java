@@ -158,10 +158,10 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 				}
 
 				// reset all aggregators
-				// TODO Warning: in SSP aggregators are not reset
-//				for (Aggregator<?> agg : aggregators.values()) {
-//					agg.reset();
-//				}
+				// TODO Warning: in SSP are reset after each worker update
+				for (Aggregator<?> agg : aggregators.values()) {
+					agg.reset();
+				}
 
 //				notifyMonitor(IterationMonitoring.Event.SYNC_FINISHED, currentIteration);
 			}

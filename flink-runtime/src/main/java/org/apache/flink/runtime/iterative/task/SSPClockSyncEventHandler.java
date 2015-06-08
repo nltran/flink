@@ -18,20 +18,18 @@
 
 package org.apache.flink.runtime.iterative.task;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-
+import com.gs.collections.api.bag.MutableBag;
+import com.gs.collections.impl.bag.mutable.HashBag;
 import org.apache.flink.api.common.aggregators.Aggregator;
 import org.apache.flink.runtime.event.task.TaskEvent;
 import org.apache.flink.runtime.iterative.event.WorkerClockEvent;
 import org.apache.flink.runtime.util.event.EventListener;
 import org.apache.flink.types.Value;
-
-import com.gs.collections.api.bag.MutableBag;
-import com.gs.collections.impl.bag.mutable.HashBag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 
@@ -126,7 +124,6 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 			Aggregator<Value> aggregator = (Aggregator<Value>) this.aggregators.get(aggNames[i]);
 			aggregator.aggregate(aggregates[i]);
 			this.aggUpdated = true;
-			Thread.currentThread().interrupt();
 		}
 //		}
 
@@ -136,10 +133,11 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 			if (newClockCandidate > currentClock) {
 				currentClock = newClockCandidate;
 				this.clockUpdated = true;
-				Thread.currentThread().interrupt();
+//				Thread.currentThread().interrupt();
 			}
 		}
 		this.endOfSuperstep = true;
+		Thread.currentThread().interrupt();
 
 
 //		if(allWorkersAtClock( currentClock + absp + 1) && howManyWorkersAtClock(currentClock + absp + 1) % numberOfEventsUntilEndOfSuperstep ==0) {
@@ -231,6 +229,7 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 
 	public void resetClockUpdated() {
 		this.clockUpdated = false;
+		this.aggUpdated = false;
 	}
 
 	public boolean isAggUpdated() {

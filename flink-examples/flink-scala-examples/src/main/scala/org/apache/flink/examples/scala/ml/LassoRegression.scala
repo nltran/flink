@@ -46,7 +46,8 @@ object LassoRegression {
     val env = ExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(PARALLELISM)
 
-    val X: DenseMatrix[Double] = DenseMatrix.eye[Double](dimension)
+//    val X: DenseMatrix[Double] = DenseMatrix.eye[Double](dimension)
+    val X: DenseMatrix[Double] = DenseMatrix.rand[Double](dimension, size)
     val alpha = SparseVector.zeros[Double](size)
     alpha.update(1, 0.45)
     alpha.update(2, 0.18)
