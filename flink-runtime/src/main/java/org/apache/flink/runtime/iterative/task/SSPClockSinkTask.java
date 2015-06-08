@@ -72,11 +72,11 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 
 	private boolean terminate = false;
 
-	private final int absp = 3;
+//	private int slack = 3;
 
 
 	// --------------------------------------------------------------------------------------------
-	
+
 	@Override
 	public void registerInputOutput() {
 		this.headEventReader = new MutableRecordReader<IntValue>(getEnvironment().getInputGate(0));
@@ -85,6 +85,9 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 	@Override
 	public void invoke() throws Exception {
 		TaskConfig taskConfig = new TaskConfig(getTaskConfiguration());
+		//TODO very ugly. Pass this to the TaskConfiguration
+		int slack = getExecutionConfig().getSSPSlack()> -1 ? getExecutionConfig().getSSPSlack(): 3;
+
 		
 		// store all aggregators
 		this.aggregators = new HashMap<String, Aggregator<?>>();
@@ -125,7 +128,7 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 				log.info(formatLogString("finishing iteration [" + currentIteration + "]"));
 			}
 
-			if (checkForConvergence()) {
+			if (checkForConvergence(slack)) {
 				if (log.isInfoEnabled()) {
 					log.info(formatLogString("signaling that all workers are to terminate in iteration ["
 						+ currentIteration + "]"));
@@ -174,13 +177,13 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 //		}
 //	}
 
-	private boolean checkForConvergence() {
+	private boolean checkForConvergence(int slack) {
 
 
 		if (maxNumberOfIterations == currentIteration) {
 			terminate = true;
 
-			if (eventHandler.allWorkersAtClock(maxNumberOfIterations + absp)) {
+			if (eventHandler.allWorkersAtClock(maxNumberOfIterations + slack)) {
 				if (log.isInfoEnabled()) {
 					log.info(formatLogString("maximum number of iterations [" + currentIteration
 							+ "] reached, terminating..."));

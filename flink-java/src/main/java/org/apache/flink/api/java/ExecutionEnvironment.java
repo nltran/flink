@@ -18,18 +18,7 @@
 
 package org.apache.flink.api.java;
 
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.UUID;
-
 import com.esotericsoftware.kryo.Serializer;
-
 import com.google.common.base.Joiner;
 import org.apache.commons.lang3.Validate;
 import org.apache.flink.api.common.ExecutionConfig;
@@ -73,6 +62,16 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Job;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * The ExecutionEnviroment is the context in which a program is executed. A
@@ -131,6 +130,13 @@ public abstract class ExecutionEnvironment {
 	 */
 	public ExecutionConfig getConfig() {
 		return config;
+	}
+
+
+	public int getSSPSlack() {return config.getSSPSlack();}
+
+	public void setSSPSlack(int slack) {
+		config.setSSPSlack(slack);
 	}
 
 	/**
