@@ -20,9 +20,12 @@ package eu.enx.flink.paper01
 
 import breeze.linalg._
 import breeze.numerics._
+import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
 import org.apache.flink.ml.regression.{LassoWithPS, ColumnVector, Lasso}
+import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.conf.Configuration
 
 
 /**
@@ -101,8 +104,8 @@ object LassoRegression {
   def signalGenerator(colVec: DataSet[ColumnVector], noise: Double, coeff: DataSet[SparseEntry]): DataSet[DenseVector[Double]] = {
     val joinedDataSet = colVec.joinWithTiny(coeff).where("idx").equalTo("index")
     val ret = joinedDataSet.map {
-//      x => x._1.values.copy *= x._2.value
-      new MyMap
+      x => x._1.values.copy *= x._2.value
+//      new MyMap
     } reduce {
       (left, right) => left + right
     }
@@ -115,12 +118,33 @@ object LassoRegression {
     indices.zip(coeff).map(x => SparseEntry(x._1, x._2))
   }
 
-
   case class SparseEntry(index: Int, value: Double)
 
-  case class MyMap extends RichMapFunction[(ColumnVector, SparseEntry), DenseVector[Double]] {
+  class MyMap extends RichMapFunction[(ColumnVector, SparseEntry), DenseVector[Double]] {
+
+
+
+    def write(filepath:String, data:List[String]): Unit = {
+
+      val conf = ConfigFactory.load("job.conf")
+      System.setProperty("HADOOP_USER_NAME", "hdfs")
+      val path = new Path(filepath)
+      val config = new Configuration()
+      config.set("fs.defaultFS", conf.getString("hdfs.uri"))
+      val fs = FileSystem.get(config)
+
+      if(fs.exists(path)) {
+        fs.delete(path, false)
+      }
+      val os = fs.create(path)
+      data.foreach(a => os.write(a.getBytes()))
+
+      fs.close()
+
+      }
+
     override def map(value: (ColumnVector, SparseEntry)): DenseVector[Double] = {
-      println(getRuntimeContext.getIndexOfThisSubtask + " " + value)
+//      println(getRuntimeContext.getIndexOfThisSubtask + " " + value)
       value._1.values.copy *= value._2.value
 
     }

@@ -2,15 +2,20 @@ package org.apache.flink.ml.regression
 
 import breeze.linalg._
 import breeze.numerics._
+import com.typesafe.config.ConfigFactory
+import com.typesafe.config.Config
 import org.apache.flink.api.common.functions.{RichMapFunction, RichMapFunctionWithSSPServer}
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.ps.model.ParameterElement
+import org.apache.hadoop.fs.{FileSystem, Path}
 
 /**
  * Created by Thomas Peel @ Eura Nova
  * on 20/05/15.
  */
+
+
 
 class LassoWithPS(beta: Double,
                   numIter: Int,
@@ -105,13 +110,70 @@ case class SparseParameterElement(clock: Int = 0,
 class UpdateParameter(id: String, beta: Double, line_search: Boolean)
   extends RichMapFunctionWithSSPServer[AtomSet, (DenseVector[Double], SparseParameterElement, Double)] {
   var Y: DenseVector[Double] = null
+  var jobConf:Config = null;
+  var logBuf:scala.collection.mutable.ListBuffer[String] = null
 
   override def open(config: Configuration): Unit = {
     super.open(config)
     Y = getRuntimeContext.getBroadcastVariable[DenseVector[Double]]("Y").get(0).copy
+    jobConf = ConfigFactory.load("job.conf")
+    if(logBuf == null) {
+      logBuf = scala.collection.mutable.ListBuffer.empty[String]
+    }
+  }
+
+  /**
+   * The path to the log file for each worker on HDFS looks like this:
+   * /cluster_setting/beta_slack/sampleID/workerID.csv
+   * TODO: getFilePath(workerID)
+   * @return the path to the log file for this worker
+   */
+  def getLogFilePath:String = {
+    val clusterSetting = jobConf.getInt("cluster.nodes")
+    val rootdir = jobConf.getString("hdfs.result_rootdir")
+    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val sampleID = 0
+
+    val res = "/" + rootdir +  "/" + clusterSetting + "/" + beta+"_" + slack+"/"+ sampleID+ "/" + workerID + ".csv"
+    res
+  }
+
+  def write(uri: String, filePath: String, data: List[String]): Unit = {
+    def values = for(i <- data) yield i
+
+    System.setProperty("HADOOP_USER_NAME", "hdfs")
+    val path = new Path(filePath)
+    val conf = new org.apache.hadoop.conf.Configuration()
+    conf.set("fs.defaultFS", uri)
+    val fs = FileSystem.get(conf)
+
+    if(fs.exists(path)) {
+      fs.delete(path, false)
+    }
+
+    val os = fs.create(path)
+    data.foreach(a => os.write(a.getBytes()))
+
+    fs.close()
+  }
+
+  /**
+   * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
+   * @return a CSV String with the log entry
+   */
+  def produceLogEntry(atomIndex:Int, dualityGap:Double, time:Long):String = {
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val clock = getIterationRuntimeContext.getSuperstepNumber
+
+    val res = workerID + ","+clock+","+atomIndex+"," + time + "," +dualityGap
+    res
   }
 
   def map(in: AtomSet): (DenseVector[Double], SparseParameterElement, Double) = {
+    val t0 = System.nanoTime
+
+    val tt = getLogFilePath
     val iterationNumber = getIterationRuntimeContext.getSuperstepNumber
 
     var new_residual: DenseVector[Double] = null
@@ -168,6 +230,18 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
     val new_param = new SparseParameterElement(iterationNumber, new_sol)
     update(id, new_param)
 
+    val t1 = System.nanoTime
+
+    logBuf += produceLogEntry(index,norm(new_residual), t1-t0)
+
     (new_residual, new_param, duality_gap)
   }
+
+  override def close() = {
+    super.close();
+    write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+    getIterationRuntimeContext.
+  }
+
+
 }
