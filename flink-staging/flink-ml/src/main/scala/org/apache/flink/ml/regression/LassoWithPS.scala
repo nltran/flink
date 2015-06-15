@@ -48,7 +48,7 @@ class LassoWithPS(beta: Double,
         val residual = residualApprox map ( t => t._1)
 
         val residual_param_gap = matrices map {
-          new UpdateParameter("alpha", beta, line_search)
+          new UpdateParameter("alpha", beta, line_search, epsilon, numIter)
         } withBroadcastSet(Y, "Y") withBroadcastSet(residual, "residual")
 
         // Seems that the duality gap in asynchronous setting is no longer a positive value at each iteration.
@@ -107,7 +107,7 @@ case class SparseParameterElement(clock: Int = 0,
 
 // Rich map functions
 
-class UpdateParameter(id: String, beta: Double, line_search: Boolean)
+class UpdateParameter(id: String, beta: Double, line_search: Boolean, epsilon:Double, maxIter:Int)
   extends RichMapFunctionWithSSPServer[AtomSet, (DenseVector[Double], SparseParameterElement, Double)] {
   var Y: DenseVector[Double] = null
   var jobConf:Config = null;
@@ -167,7 +167,18 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
     val clock = getIterationRuntimeContext.getSuperstepNumber
 
     val res = workerID + ","+clock+","+atomIndex+"," + time + "," +dualityGap
+    println("log entry: " + res)
     res
+  }
+
+  /**
+   * Given the current iteration and residual, returns true if the algorithm has converged
+   * @return true if the algorithm has converged
+   */
+  def isConverged(maxIterations: Int, duality_gap:Double, epsilon:Double): Boolean = {
+    val converged = if (getIterationRuntimeContext.getSuperstepNumber == maxIterations || duality_gap <= epsilon) true else false
+      converged
+
   }
 
   def map(in: AtomSet): (DenseVector[Double], SparseParameterElement, Double) = {
@@ -234,13 +245,15 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
 
     logBuf += produceLogEntry(index,norm(new_residual), t1-t0)
 
+    if (isConverged(maxIter, duality_gap, epsilon)) {
+      println("writing to hdfs")
+      write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+    }
     (new_residual, new_param, duality_gap)
   }
 
   override def close() = {
     super.close();
-    write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
-    getIterationRuntimeContext.
   }
 
 
