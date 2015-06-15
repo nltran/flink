@@ -182,19 +182,23 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 
 		if (maxNumberOfIterations == currentIteration) {
 			terminate = true;
+			if (log.isInfoEnabled()) {
+				log.info(formatLogString("maximum number of iterations [" + currentIteration
+						+ "] reached, terminating..."));}
 
-			if (eventHandler.allWorkersAtClock(maxNumberOfIterations + slack)) {
-				if (log.isInfoEnabled()) {
-					log.info(formatLogString("maximum number of iterations [" + currentIteration
-							+ "] reached, terminating..."));
-					return true;
-				} else {
-					if (log.isInfoEnabled()) {
-						log.info(formatLogString("maximum number of iterations [" + currentIteration
-								+ "] reached, but waiting for workers to reach final clock..."));
-					}
-				}
-			}
+			return true;
+//			if (eventHandler.allWorkersAtClock(maxNumberOfIterations + slack)) {
+//				if (log.isInfoEnabled()) {
+//					log.info(formatLogString("maximum number of iterations [" + currentIteration
+//							+ "] reached, terminating..."));
+//					return true;
+//				} else {
+//					if (log.isInfoEnabled()) {
+//						log.info(formatLogString("maximum number of iterations [" + currentIteration
+//								+ "] reached, but waiting for workers to reach final clock..."));
+//					}
+//				}
+//			}
 		}
 
 		if (convergenceAggregatorName != null) {
