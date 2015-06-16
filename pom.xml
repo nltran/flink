@@ -66,8 +66,6 @@ under the License.
 		<module>flink-quickstart</module>
 		<module>flink-contrib</module>
 		<module>flink-dist</module>
-    <module>flink-ssp-parameter-server</module>
-		<module>frank-wolfe</module>
 	</modules>
 
 	<properties>
