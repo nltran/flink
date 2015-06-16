@@ -58,11 +58,11 @@ object LassoRegression {
 
     val noise = DenseVector.rand[Double](dimension) *= NOISE_LEVEL
 
-    val Y = env.fromElements(X * alpha + noise)
+    val Y = env.fromElements((X * alpha + noise).toArray)
 
     val columns = env.fromCollection({
       0 until size
-    } map { i => ColumnVector(i, X(::, i).copy) })
+    } map { i => ColumnVector(i, X(::, i).toArray) })
 
     val fw = new Lasso(beta = beta,
       numIter = NUMITER,
