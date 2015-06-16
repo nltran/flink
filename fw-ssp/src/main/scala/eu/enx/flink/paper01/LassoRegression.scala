@@ -22,7 +22,7 @@ import breeze.linalg._
 import breeze.stats.distributions.Gaussian
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
-import org.apache.flink.ml.regression.{ColumnVector, LassoWithPS}
+import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
 
 
 /**
@@ -43,21 +43,21 @@ object LassoRegression {
     val NOISE = 0.0
     val OPT = "GR"
 
-    val dimension = 512
-    val size = 2048
+    val dimension = 128
+    val size = 1024
 
     val env = ExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(PARALLELISM)
 
     val beta = 1.0
 
-    val fw = new LassoWithPS(
+    val fw = new Lasso(
       beta = beta,
       numIter = NUMITER,
       normalize = NORMALIZE,
       line_search = LINESEARCH,
-      epsilon = EPSILON)
-    //opt = OPT)
+      epsilon = EPSILON,
+      opt = OPT)
 
     val cols = env.fromCollection(columnGenerator(dimension, size, "gaussian"))
     val alpha = env.fromCollection(
@@ -68,7 +68,7 @@ object LassoRegression {
     val model = fw.fit(cols, signal)
 
     // Sink
-    env.fromElements(model).print()
+    env.fromElements(model).first(1).print()
     env.execute()
   }
 

@@ -35,7 +35,7 @@ object DorotheaLassoRegression {
       opt = OPT)
 
     val y = env.readTextFile(
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train.labels"
+      "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train_sub.labels"
       //"/home/tpeel/data/archives.ics.uci.edu/dorothea/dorothea_train_sub.labels"
     ).setParallelism(1).map(x => x.toDouble)
 
@@ -47,7 +47,7 @@ object DorotheaLassoRegression {
     //    val Y = env.fromElements(DenseVector.rand[Double](dimension))
 
     val csv = env.readCsvFile[(Int, String)](
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train.csv",
+      "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train_sub.csv",
       //"/home/tpeel/data/archives.ics.uci.edu/dorothea/dorothea_train_sub.csv",
       ignoreFirstLine = true)
 

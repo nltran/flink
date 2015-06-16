@@ -115,10 +115,9 @@ class Lasso(
         }
       }
     }
-    val m = data.count.toInt
 
     val out = iteration map {
-      x => LassoModel(x.sparseApproximation.idx, x.sparseApproximation.coef.toArray)
+      x => LassoModel(x.sparseApproximation.idx, x.sparseApproximation.coef)
     }
     out
   }

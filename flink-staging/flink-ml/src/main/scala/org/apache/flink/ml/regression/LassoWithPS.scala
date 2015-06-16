@@ -18,13 +18,15 @@
 
 package org.apache.flink.ml.regression
 
-import breeze.linalg
 import breeze.linalg._
 import breeze.numerics._
+import com.typesafe.config.ConfigFactory
+import com.typesafe.config.Config
 import org.apache.flink.api.common.functions.RichMapFunctionWithSSPServer
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.ps.model.ParameterElement
+import org.apache.hadoop.fs.{FileSystem, Path}
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -38,9 +40,8 @@ class LassoWithPS(
   line_search: Boolean = false,
   epsilon: Double = 1e-3)
   extends Serializable {
-  private var _coef: SparseVector[Double] = null
 
-  def fit(data: DataSet[ColumnVector], target: DataSet[Array[Double]]): LassoModel = {
+  def fit(data: DataSet[ColumnVector], target: DataSet[Array[Double]]): DataSet[LassoModel] = {
     val Y = if (normalize) {
       target map { x => breeze.linalg.normalize(DenseVector(x)).toArray }
     } else {
@@ -57,8 +58,7 @@ class LassoWithPS(
         } reduce {
           (
             left,
-            right) => AtomSet(left.matrix ++ right.matrix, left.index ++ right
-            .index)
+            right) => AtomSet(left.matrix ++ right.matrix, left.index ++ right.index)
         }
         Some(mat)
       }
@@ -70,7 +70,7 @@ class LassoWithPS(
         val residual = residualApprox map (t => t._1)
 
         val residual_param_gap = matrices map {
-          new UpdateParameter("alpha", beta, line_search)
+          new UpdateParameter("alpha", beta, line_search, epsilon, numIter)
         } withBroadcastSet(Y, "Y") withBroadcastSet(residual, "residual")
 
         // Seems that the duality gap in asynchronous setting is no longer a positive value at
@@ -89,12 +89,10 @@ class LassoWithPS(
       }
     }
 
-    val m = data.count().toInt
-
-    this._coef = ((iteration collect) head)._2.getValue.toSparseVector(m)
-    val s = ((iteration collect) head)._2.getValue
-
-    LassoModel(s.idx, s.coef.toArray)
+    val out = iteration map {
+      x => LassoModel(x._2.getValue.idx, x._2.getValue.coef)
+    }
+    out
   }
 }
 
@@ -135,17 +133,83 @@ case class SparseParameterElement(
 
 // Rich map functions
 
-class UpdateParameter(id: String, beta: Double, line_search: Boolean)
+class UpdateParameter(id: String, beta: Double, line_search: Boolean, epsilon:Double, maxIter:Int)
   extends RichMapFunctionWithSSPServer[AtomSet, (Array[Double], SparseParameterElement,
     Double)] {
   var Y: DenseVector[Double] = null
+  var jobConf:Config = null
+  var logBuf:scala.collection.mutable.ListBuffer[String] = null
 
   override def open(config: Configuration): Unit = {
     super.open(config)
     Y = DenseVector(getRuntimeContext.getBroadcastVariable[Array[Double]]("Y").get(0))
+    jobConf = ConfigFactory.load("job.conf")
+    if(logBuf == null) logBuf = scala.collection.mutable.ListBuffer.empty[String]
+  }
+
+  /**
+   * The path to the log file for each worker on HDFS looks like this:
+   * /cluster_setting/beta_slack/sampleID/workerID.csv
+   * TODO: getFilePath(workerID)
+   * @return the path to the log file for this worker
+   */
+  def getLogFilePath:String = {
+    val clusterSetting = jobConf.getInt("cluster.nodes")
+    val rootdir = jobConf.getString("hdfs.result_rootdir")
+    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val sampleID = 0
+
+    val res = "/" + rootdir +  "/" + clusterSetting + "/" + beta+"_" + slack+"/"+ sampleID+ "/" + workerID + ".csv"
+    res
+  }
+
+  def write(uri: String, filePath: String, data: List[String]): Unit = {
+    def values = for(i <- data) yield i
+
+    System.setProperty("HADOOP_USER_NAME", "hdfs")
+    val path = new Path(filePath)
+    val conf = new org.apache.hadoop.conf.Configuration()
+    conf.set("fs.defaultFS", uri)
+    val fs = FileSystem.get(conf)
+
+    if(fs.exists(path)) {
+      fs.delete(path, false)
+    }
+
+    val os = fs.create(path)
+    data.foreach(a => os.write(a.getBytes()))
+
+    fs.close()
+  }
+
+  /**
+   * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
+   * @return a CSV String with the log entry
+   */
+  def produceLogEntry(atomIndex:Int, dualityGap:Double, time:Long):String = {
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val clock = getIterationRuntimeContext.getSuperstepNumber
+
+    val res = workerID + ","+clock+","+atomIndex+"," + time + "," +dualityGap
+    println("log entry: " + res)
+    res
+  }
+
+  /**
+   * Given the current iteration and residual, returns true if the algorithm has converged
+   * @return true if the algorithm has converged
+   */
+  def isConverged(maxIterations: Int, duality_gap:Double, epsilon:Double): Boolean = {
+    val converged = if (getIterationRuntimeContext.getSuperstepNumber == maxIterations || duality_gap <= epsilon) true else false
+      converged
+
   }
 
   def map(in: AtomSet): (Array[Double], SparseParameterElement, Double) = {
+    val t0 = System.nanoTime
+
+    val tt = getLogFilePath
     val iterationNumber = getIterationRuntimeContext.getSuperstepNumber
 
     var new_residual: DenseVector[Double] = null
@@ -158,7 +222,7 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
     val approx = new DenseMatrix(model.atoms(0).length, model.atoms.length, model.atoms.flatten) *
       DenseVector(model.coef)
 
-    val residual = if (model.isEmpty()) Y else Y - (approx)
+    val residual = if (model.isEmpty()) Y else Y - approx
 
     val A = new DenseMatrix[Double](in.matrix(0).length, in.matrix.length, in.matrix.flatten)
     val grad = -A.t * residual
@@ -207,6 +271,18 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
     val new_param = new SparseParameterElement(iterationNumber, new_sol)
     update(id, new_param)
 
+    val t1 = System.nanoTime
+
+    logBuf += produceLogEntry(index,norm(new_residual), t1-t0)
+
+    if (isConverged(maxIter, duality_gap, epsilon)) {
+      println("writing to hdfs")
+      write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+    }
     (new_residual.toArray, new_param, duality_gap)
+  }
+
+  override def close() = {
+    super.close()
   }
 }

@@ -237,8 +237,8 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 		return barrier;
 	}
 
-	private SSPClockHolder initClockHolder() {
-		SSPClockHolder clockHolder = new SSPClockHolder(getUserCodeClassLoader());
+	private SSPClockHolder initClockHolder(int slack) {
+		SSPClockHolder clockHolder = new SSPClockHolder(getUserCodeClassLoader(), slack);
 
 		// listens from the sink
 		this.toSync.subscribeToEvent(clockHolder, ClockTaskEvent.class);
@@ -257,6 +257,8 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 	public void run() throws Exception {
 		final String brokerKey = brokerKey();
 		final int workerIndex = getEnvironment().getIndexInSubtaskGroup();
+		//TODO very ugly. Pass this to the TaskConfiguration
+		int slack = getExecutionConfig().getSSPSlack()> -1 ? getExecutionConfig().getSSPSlack(): 3;
 
 		final boolean objectSolutionSet = config.isSolutionSetUnmanaged();
 
@@ -273,7 +275,7 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 
 			BlockingBackChannel backChannel = initBackChannel();
 //			SuperstepBarrier barrier = initSuperstepBarrier();
-			SSPClockHolder clockHolder = initClockHolder();
+			SSPClockHolder clockHolder = initClockHolder(slack);
 //			SSPAggregatorEventListener aggListener = initAggListener();
 			SolutionSetUpdateBarrier solutionSetUpdateBarrier = null;
 

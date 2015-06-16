@@ -51,7 +51,7 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 
 	private int ownClock = 0;
 	private int currentClock = 0;
-	private int absp = 3;
+	private int slack = 3;
 	private boolean justBeenReleased = false;
 
 	public boolean isJustBeenReleased() {
@@ -63,11 +63,12 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 	}
 
 	public boolean isAtABSPLimit() {
-		return (ownClock == currentClock + absp);
+		return (ownClock == currentClock + slack);
 	}
 
-	public SSPClockHolder(ClassLoader userCodeClassLoader) {
+	public SSPClockHolder(ClassLoader userCodeClassLoader, int slack) {
 		this.userCodeClassLoader = userCodeClassLoader;
+		this.slack = slack;
 	}
 
 	public void clock() {
@@ -84,7 +85,7 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 	 * setup the barrier, has to be called at the beginning of each superstep
 	 */
 	public void setup() {
-//		if(ownClock > currentClock + absp )
+//		if(ownClock > currentClock + slack )
 		latch = new CountDownLatch(1);
 	}
 
@@ -92,13 +93,13 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 	 * wait on the barrier
 	 */
 	public void waitForNextClock() throws InterruptedException {
-		if (ownClock > currentClock + absp) {
-			log.info("Worker is ahead of absp bound (" + absp + ")  : current clock:" + currentClock + " ownclock: " + ownClock);
+		if (ownClock > currentClock + slack) {
+			log.info("Worker is ahead of slack bound (" + slack + ")  : current clock:" + currentClock + " ownclock: " + ownClock);
 			setup();
 			latch.await();
 		}
 
-		log.info("Worker can continue moving ahead (" + absp + ")  : current clock:" + currentClock + " ownclock: " + ownClock);
+		log.info("Worker can continue moving ahead (" + slack + ")  : current clock:" + currentClock + " ownclock: " + ownClock);
 
 	}
 
@@ -134,7 +135,7 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 				aggregatorNames = cte.getAggregatorNames();
 				aggregates = cte.getAggregates(userCodeClassLoader);
 				this.hasAggregators = true;
-				if (ownClock > currentClock + absp) {
+				if (ownClock > currentClock + slack) {
 					return;
 				}
 				else {
@@ -155,7 +156,7 @@ public class SSPClockHolder implements EventListener<TaskEvent> {
 //			aggregatorNames = cte.getAggregatorNames();
 //			aggregates = cte.getAggregates(userCodeClassLoader);
 //			this.hasAggregators = true;
-//			if (ownClock > currentClock + absp) {
+//			if (ownClock > currentClock + slack) {
 //				return;
 //			}
 //			latch.countDown();
