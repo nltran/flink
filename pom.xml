@@ -67,7 +67,8 @@ under the License.
 		<module>flink-contrib</module>
 		<module>flink-dist</module>
     <module>flink-ssp-parameter-server</module>
-  </modules>
+		<module>frank-wolfe</module>
+	</modules>
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

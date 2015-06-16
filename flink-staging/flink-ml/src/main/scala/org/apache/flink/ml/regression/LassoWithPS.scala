@@ -1,8 +1,27 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.flink.ml.regression
 
+import breeze.linalg
 import breeze.linalg._
 import breeze.numerics._
-import org.apache.flink.api.common.functions.{RichMapFunction, RichMapFunctionWithSSPServer}
+import org.apache.flink.api.common.functions.RichMapFunctionWithSSPServer
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.ps.model.ParameterElement
@@ -12,16 +31,21 @@ import org.apache.flink.ps.model.ParameterElement
  * on 20/05/15.
  */
 
-class LassoWithPS(beta: Double,
-                  numIter: Int,
-                  normalize: Boolean = false,
-                  line_search: Boolean = false,
-                  epsilon: Double = 1e-3)
+class LassoWithPS(
+  beta: Double,
+  numIter: Int,
+  normalize: Boolean = false,
+  line_search: Boolean = false,
+  epsilon: Double = 1e-3)
   extends Serializable {
   private var _coef: SparseVector[Double] = null
 
-  def fit(data: DataSet[ColumnVector], target: DataSet[DenseVector[Double]]): LassoModel = {
-    val Y = if (normalize) target map { x => breeze.linalg.normalize(x.copy) } else target
+  def fit(data: DataSet[ColumnVector], target: DataSet[Array[Double]]): LassoModel = {
+    val Y = if (normalize) {
+      target map { x => breeze.linalg.normalize(DenseVector(x)).toArray }
+    } else {
+      target
+    }
 
     // Initialize parameter
     val initial = Y map { x => (x, SparseParameterElement.empty) }
@@ -29,24 +53,28 @@ class LassoWithPS(beta: Double,
     val matrices = data partitionCustom(new ColumnPartitioner, "idx") mapPartition {
       columns => {
         val mat = columns map {
-          case ColumnVector(index, values) => AtomSet(values.asDenseMatrix.t, Array(index))
+          case ColumnVector(index, values) => AtomSet(Array(values), Array(index))
         } reduce {
-          (left, right) => AtomSet(DenseMatrix.horzcat(left.matrix, right.matrix), left.index ++ right.index)
+          (
+            left,
+            right) => AtomSet(left.matrix ++ right.matrix, left.index ++ right
+            .index)
         }
         Some(mat)
       }
     }
 
     val iteration = initial.iterateWithTermination(numIter) {
-      residualApprox: DataSet[(DenseVector[Double], SparseParameterElement)] => {
+      residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
 
-        val residual = residualApprox map ( t => t._1)
+        val residual = residualApprox map (t => t._1)
 
         val residual_param_gap = matrices map {
           new UpdateParameter("alpha", beta, line_search)
         } withBroadcastSet(Y, "Y") withBroadcastSet(residual, "residual")
 
-        // Seems that the duality gap in asynchronous setting is no longer a positive value at each iteration.
+        // Seems that the duality gap in asynchronous setting is no longer a positive value at
+        // each iteration.
         // Thus we take the absolute value of the dot product.
         // Is it correct ?
         val termination = residual_param_gap filter {
@@ -64,20 +92,24 @@ class LassoWithPS(beta: Double,
     val m = data.count().toInt
 
     this._coef = ((iteration collect) head)._2.getValue.toSparseVector(m)
+    val s = ((iteration collect) head)._2.getValue
 
-    LassoModel(this._coef)
+    LassoModel(s.idx, s.coef.toArray)
   }
 }
 
 // Case classes
-case class LassoModel(coef: SparseVector[Double]) {
+case class LassoModel(index: Array[Int], data: Array[Double]) extends Serializable {
   override def toString: String = {
-    if (coef == null) "Empty model."
-    else coef.toString()
+    if (index == null) "Empty model."
+    else {
+      assert(index.length == data.length)
+      index.zip(data).mkString(" ")
+    }
   }
 }
 
-case class AtomSet(matrix: DenseMatrix[Double], index: Array[Int])
+case class AtomSet(matrix: Array[Array[Double]], index: Array[Int])
 
 // Parameter elements
 
@@ -87,8 +119,9 @@ object SparseParameterElement {
   }
 }
 
-case class SparseParameterElement(clock: Int = 0,
-                             value: SparseApproximation = SparseApproximation.initialApproximation)
+case class SparseParameterElement(
+  clock: Int = 0,
+  value: SparseApproximation = SparseApproximation.initialApproximation)
   extends ParameterElement[SparseApproximation] {
 
   def getClock: Int = {
@@ -103,15 +136,16 @@ case class SparseParameterElement(clock: Int = 0,
 // Rich map functions
 
 class UpdateParameter(id: String, beta: Double, line_search: Boolean)
-  extends RichMapFunctionWithSSPServer[AtomSet, (DenseVector[Double], SparseParameterElement, Double)] {
+  extends RichMapFunctionWithSSPServer[AtomSet, (Array[Double], SparseParameterElement,
+    Double)] {
   var Y: DenseVector[Double] = null
 
   override def open(config: Configuration): Unit = {
     super.open(config)
-    Y = getRuntimeContext.getBroadcastVariable[DenseVector[Double]]("Y").get(0).copy
+    Y = DenseVector(getRuntimeContext.getBroadcastVariable[Array[Double]]("Y").get(0))
   }
 
-  def map(in: AtomSet): (DenseVector[Double], SparseParameterElement, Double) = {
+  def map(in: AtomSet): (Array[Double], SparseParameterElement, Double) = {
     val iterationNumber = getIterationRuntimeContext.getSuperstepNumber
 
     var new_residual: DenseVector[Double] = null
@@ -121,16 +155,20 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
     if (el == null) el = new SparseParameterElement
     val model = el.getValue
 
-    val residual = if (model.isEmpty()) Y else Y - (model.atoms * model.coef)
+    val approx = new DenseMatrix(model.atoms(0).length, model.atoms.length, model.atoms.flatten) *
+      DenseVector(model.coef)
 
-    val grad = -in.matrix.t * residual
+    val residual = if (model.isEmpty()) Y else Y - (approx)
+
+    val A = new DenseMatrix[Double](in.matrix(0).length, in.matrix.length, in.matrix.flatten)
+    val grad = -A.t * residual
     val j = argmax(abs(grad))
     val index = in.index(j)
-    val atom = in.matrix(::, j).copy
+    val atom = in.matrix(j)
     val gradJ = grad(j)
 
-    val s_k: DenseVector[Double] = atom.copy * (signum(-gradJ) * beta)
-    val A_temp = if (model.isEmpty()) s_k else s_k - model.atoms * model.coef
+    val s_k: DenseVector[Double] = DenseVector(atom) * (signum(-gradJ) * beta)
+    val A_temp = if (model.isEmpty()) s_k else s_k - approx
     // TODO: Check this !
     val duality_gap = A_temp.t * residual
 
@@ -146,28 +184,29 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean)
 
     if (model.isEmpty()) {
       new_residual = residual - s_k * gamma
-      new_sol = SparseApproximation(atom.asDenseMatrix.t, Array(index), DenseVector[Double](v))
+      new_sol = SparseApproximation(Array(atom), Array(index), Array(v))
     }
     else {
-      new_residual = residual + gamma * (model.atoms * model.coef - s_k)
+      new_residual = residual + gamma * (approx - s_k)
       val idx = model.idx.indexOf(index)
-      val coef: DenseVector[Double] = model.coef.copy * (1.0 - gamma)
+      val coef: DenseVector[Double] = DenseVector(model.coef) * (1.0 - gamma)
       if (idx == -1) {
         val new_idx = (Array(index) ++ model.idx).clone()
-        val new_coef = DenseVector[Double](Array(v) ++ coef.toArray).copy
-        val new_atoms = DenseMatrix.horzcat(atom.copy.asDenseMatrix.t, model.atoms.copy)
+        val new_coef = Array(v) ++ coef.toArray
+        val new_atoms = Array(atom) ++ model.atoms
         new_sol = SparseApproximation(new_atoms, new_idx, new_coef)
       } else {
         coef(idx) += v
-        new_sol = SparseApproximation(model.atoms.copy, model.idx.clone(), coef)
+        new_sol = SparseApproximation(model.atoms, model.idx, coef.toArray)
       }
     }
-    println("Residual norm = " + norm(new_residual) + " Duality_gap = " + duality_gap + "##### Actual clock : " + el.getClock)
+    println("Residual norm = " + norm(new_residual) + " Duality_gap = " + duality_gap + "##### " +
+      "Actual clock : " + el.getClock)
 
     // Update parameter server
     val new_param = new SparseParameterElement(iterationNumber, new_sol)
     update(id, new_param)
 
-    (new_residual, new_param, duality_gap)
+    (new_residual.toArray, new_param, duality_gap)
   }
 }
