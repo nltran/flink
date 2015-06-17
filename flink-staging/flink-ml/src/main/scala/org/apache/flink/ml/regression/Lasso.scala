@@ -20,7 +20,6 @@ package org.apache.flink.ml.regression
 
 import breeze.linalg._
 import breeze.numerics.{abs, signum}
-import com.github.fommil.netlib.BLAS.{getInstance => blas}
 import org.apache.flink.api.common.functions.{Partitioner, RichMapFunction}
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
@@ -117,7 +116,7 @@ class Lasso(
     }
 
     val out = iteration map {
-      x => LassoModel(x.sparseApproximation.idx, x.sparseApproximation.coef)
+      x => new LassoModel(x.sparseApproximation.idx, x.sparseApproximation.coef)
     }
     out
   }
@@ -126,33 +125,31 @@ class Lasso(
 // Case classes
 
 // A partial solution of the Lasso problem.
+@SerialVersionUID(123L)
 case class PartialLassoSolution(
   residual: Array[Double],
   sparseApproximation: SparseApproximation,
-  dualityGap: Double)
+  dualityGap: Double) extends Serializable
 
-case class MyMatrix(matrix: Array[Array[Double]], index: Array[Int])
+@SerialVersionUID(123L)
+case class MyMatrix(matrix: Array[Array[Double]], index: Array[Int]) extends Serializable
 
-case class VectorEntry(index: Int, value: Double)
+@SerialVersionUID(123L)
+case class ColumnVector(idx: Int, values: Array[Double]) extends Serializable
 
-case class MatrixEntry(row: Int, col: Int, value: Double)
-
-case class ColumnVector(idx: Int, values: Array[Double])
-
-case class IntermediateSolution(A: MyMatrix, approx: SparseApproximation)
-
+@SerialVersionUID(123L)
 case class SparseApproximation(
   atoms: Array[Array[Double]],
   idx: Array[Int],
-  coef: Array[Double]) {
-  def isEmpty(): Boolean = {
-    atoms.length == 0
-  }
-
+  coef: Array[Double]) extends Serializable {
   def compute(): DenseVector[Double] = {
     assert(!isEmpty())
     new DenseMatrix[Double](atoms(0).length, atoms.length, atoms.flatten) *
       new DenseVector[Double](coef)
+  }
+
+  def isEmpty(): Boolean = {
+    atoms.length == 0
   }
 
   def toSparseVector(length: Int): SparseVector[Double] = {
@@ -165,7 +162,8 @@ case class SparseApproximation(
   }
 }
 
-object SparseApproximation {
+@SerialVersionUID(123L)
+object SparseApproximation extends Serializable {
   def initialApproximation: SparseApproximation = {
     new SparseApproximation(
       Array.empty[Array[Double]], Array.empty[Int], Array.empty[Double]
@@ -173,7 +171,8 @@ object SparseApproximation {
   }
 }
 
-case class Update(atom: ColumnVector, value: Double) {
+@SerialVersionUID(123L)
+case class Update(atom: ColumnVector, value: Double) extends Serializable {
   def min(that: Update): Update = {
     if (this.value < that.value) this
     else that
