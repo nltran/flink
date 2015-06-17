@@ -79,7 +79,6 @@ object DorotheaLassoRegression {
       OVERWRITE
     )
 
-    println()
     env.execute()
   }
 

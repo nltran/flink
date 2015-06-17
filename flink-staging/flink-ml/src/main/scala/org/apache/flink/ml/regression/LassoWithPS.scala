@@ -20,8 +20,7 @@ package org.apache.flink.ml.regression
 
 import breeze.linalg._
 import breeze.numerics._
-import com.typesafe.config.ConfigFactory
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.flink.api.common.functions.RichMapFunctionWithSSPServer
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
@@ -90,14 +89,14 @@ class LassoWithPS(
     }
 
     val out = iteration map {
-      x => LassoModel(x._2.getValue.idx, x._2.getValue.coef)
+      x => new LassoModel(x._2.getValue.idx, x._2.getValue.coef)
     }
     out
   }
 }
 
 // Case classes
-case class LassoModel(index: Array[Int], data: Array[Double]) extends Serializable {
+case class LassoModel(var index: Array[Int], var data: Array[Double]) extends Serializable {
   override def toString: String = {
     if (index == null) "Empty model."
     else {
@@ -133,77 +132,18 @@ case class SparseParameterElement(
 
 // Rich map functions
 
-class UpdateParameter(id: String, beta: Double, line_search: Boolean, epsilon:Double, maxIter:Int)
+class UpdateParameter(id: String, beta: Double, line_search: Boolean, epsilon: Double, maxIter: Int)
   extends RichMapFunctionWithSSPServer[AtomSet, (Array[Double], SparseParameterElement,
     Double)] {
   var Y: DenseVector[Double] = null
-  var jobConf:Config = null
-  var logBuf:scala.collection.mutable.ListBuffer[String] = null
+  var jobConf: Config = null
+  var logBuf: scala.collection.mutable.ListBuffer[String] = null
 
   override def open(config: Configuration): Unit = {
     super.open(config)
     Y = DenseVector(getRuntimeContext.getBroadcastVariable[Array[Double]]("Y").get(0))
     jobConf = ConfigFactory.load("job.conf")
-    if(logBuf == null) logBuf = scala.collection.mutable.ListBuffer.empty[String]
-  }
-
-  /**
-   * The path to the log file for each worker on HDFS looks like this:
-   * /cluster_setting/beta_slack/sampleID/workerID.csv
-   * TODO: getFilePath(workerID)
-   * @return the path to the log file for this worker
-   */
-  def getLogFilePath:String = {
-    val clusterSetting = jobConf.getInt("cluster.nodes")
-    val rootdir = jobConf.getString("hdfs.result_rootdir")
-    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val sampleID = 0
-
-    val res = "/" + rootdir +  "/" + clusterSetting + "/" + beta+"_" + slack+"/"+ sampleID+ "/" + workerID + ".csv"
-    res
-  }
-
-  def write(uri: String, filePath: String, data: List[String]): Unit = {
-    def values = for(i <- data) yield i
-
-    System.setProperty("HADOOP_USER_NAME", "hdfs")
-    val path = new Path(filePath)
-    val conf = new org.apache.hadoop.conf.Configuration()
-    conf.set("fs.defaultFS", uri)
-    val fs = FileSystem.get(conf)
-
-    if(fs.exists(path)) {
-      fs.delete(path, false)
-    }
-
-    val os = fs.create(path)
-    data.foreach(a => os.write(a.getBytes()))
-
-    fs.close()
-  }
-
-  /**
-   * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
-   * @return a CSV String with the log entry
-   */
-  def produceLogEntry(atomIndex:Int, dualityGap:Double, time:Long):String = {
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val clock = getIterationRuntimeContext.getSuperstepNumber
-
-    val res = workerID + ","+clock+","+atomIndex+"," + time + "," +dualityGap
-    println("log entry: " + res)
-    res
-  }
-
-  /**
-   * Given the current iteration and residual, returns true if the algorithm has converged
-   * @return true if the algorithm has converged
-   */
-  def isConverged(maxIterations: Int, duality_gap:Double, epsilon:Double): Boolean = {
-    val converged = if (getIterationRuntimeContext.getSuperstepNumber == maxIterations || duality_gap <= epsilon) true else false
-      converged
-
+    if (logBuf == null) logBuf = scala.collection.mutable.ListBuffer.empty[String]
   }
 
   def map(in: AtomSet): (Array[Double], SparseParameterElement, Double) = {
@@ -273,13 +213,78 @@ class UpdateParameter(id: String, beta: Double, line_search: Boolean, epsilon:Do
 
     val t1 = System.nanoTime
 
-    logBuf += produceLogEntry(index,norm(new_residual), t1-t0)
+    logBuf += produceLogEntry(index, norm(new_residual), t1 - t0)
 
     if (isConverged(maxIter, duality_gap, epsilon)) {
       println("writing to hdfs")
       write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
     }
     (new_residual.toArray, new_param, duality_gap)
+  }
+
+  /**
+   * The path to the log file for each worker on HDFS looks like this:
+   * /cluster_setting/beta_slack/sampleID/workerID.csv
+   * TODO: getFilePath(workerID)
+   * @return the path to the log file for this worker
+   */
+  def getLogFilePath: String = {
+    val clusterSetting = jobConf.getInt("cluster.nodes")
+    val rootdir = jobConf.getString("hdfs.result_rootdir")
+    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val sampleID = 0
+
+    val res = "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
+      "/" + workerID + ".csv"
+    res
+  }
+
+  def write(uri: String, filePath: String, data: List[String]): Unit = {
+    def values = for (i <- data) yield i
+
+    System.setProperty("HADOOP_USER_NAME", "hdfs")
+    val path = new Path(filePath)
+    val conf = new org.apache.hadoop.conf.Configuration()
+    conf.set("fs.defaultFS", uri)
+    val fs = FileSystem.get(conf)
+
+    if (fs.exists(path)) {
+      fs.delete(path, false)
+    }
+
+    val os = fs.create(path)
+    data.foreach(a => os.write(a.getBytes()))
+
+    fs.close()
+  }
+
+  /**
+   * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
+   * @return a CSV String with the log entry
+   */
+  def produceLogEntry(atomIndex: Int, dualityGap: Double, time: Long): String = {
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val clock = getIterationRuntimeContext.getSuperstepNumber
+
+    val res = workerID + "," + clock + "," + atomIndex + "," + time + "," + dualityGap
+    println("log entry: " + res)
+    res
+  }
+
+  /**
+   * Given the current iteration and residual, returns true if the algorithm has converged
+   * @return true if the algorithm has converged
+   */
+  def isConverged(maxIterations: Int, duality_gap: Double, epsilon: Double): Boolean = {
+    val converged = if (getIterationRuntimeContext.getSuperstepNumber == maxIterations ||
+      duality_gap <= epsilon) {
+      true
+    } else {
+      false
+    }
+    converged
+
   }
 
   override def close() = {
