@@ -2,36 +2,47 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <parent>
-        <artifactId>flink-quickstart</artifactId>
-        <groupId>org.apache.flink</groupId>
-        <version>0.9-SNAPSHOT</version>
-        <relativePath>../flink-quickstart/pom.xml</relativePath>
-    </parent>
+    <!--<parent>-->
+        <!--<artifactId>flink-quickstart</artifactId>-->
+        <!--<groupId>org.apache.flink</groupId>-->
+        <!--<version>0.9-SNAPSHOT</version>-->
+        <!--<relativePath>../flink-quickstart/pom.xml</relativePath>-->
+    <!--</parent>-->
     <modelVersion>4.0.0</modelVersion>
 
+    <groupId>eu.enx</groupId>
     <artifactId>sspquickjob</artifactId>
-    <!--<groupId>eu.euranova</groupId>-->
-    <!--<version>1.0.0-SNAPSHOT</version>-->
+    <version>0.9-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>sspquickjob</name>
+    <url>http://www.myorganization.org</url>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>apache.snapshots</id>
+            <name>Apache Development Snapshot Repository</name>
+            <url>https://repository.apache.org/content/repositories/snapshots/</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
     <dependencies>
-        <!--<dependency>-->
-            <!--<groupId>org.apache.flink</groupId>-->
-            <!--<artifactId>flink-core</artifactId>-->
-            <!--<version>${project.version}</version>-->
-        <!--</dependency>-->
 
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-clients</artifactId>
             <version>0.9-SNAPSHOT</version>
         </dependency>
-
-        <!--<dependency>-->
-        <!--<groupId>org.apache.flink</groupId>-->
-        <!--<artifactId>flink-java-examples</artifactId>-->
-        <!--<version>${project.version}</version>-->
-        <!--</dependency>-->
 
         <dependency>
             <groupId>org.apache.ignite</groupId>
@@ -48,21 +59,94 @@
     </dependencies>
 
     <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <addClasspath>true</addClasspath>
-                            <mainClass>eu.enx.SSPJob</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
-        </plugins>
+    <plugins>
+        <plugin>
+            <groupId>org.scala-tools</groupId>
+            <artifactId>maven-scala-plugin</artifactId>
+            <executions>
+                <execution>
+                    <goals>
+                        <goal>compile</goal>
+                        <goal>testCompile</goal>
+                    </goals>
+                </execution>
+            </executions>
+            <configuration>
+                <jvmArgs>
+                    <jvmArg>-Xms64m</jvmArg>
+                    <jvmArg>-Xmx1024m</jvmArg>
+                </jvmArgs>
+            </configuration>
+        </plugin>
+
+        <!-- We use the maven-assembly plugin to create a fat jar that contains all dependencies
+        except flink and it's transitive dependencies. The resulting fat-jar can be executed
+        on a cluster. Change the value of Program-Class if your program entry point changes. -->
+        <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <version>2.4.1</version>
+            <configuration>
+                <descriptors>
+                    <descriptor>src/assembly/flink-fat-jar.xml</descriptor>
+                </descriptors>
+                <archive>
+                    <manifest>
+                        <mainClass>eu.enx.flink.paper01.DorotheaLassoRegression</mainClass>
+                    </manifest>
+                </archive>
+            </configuration>
+            <executions>
+                <execution>
+                    <id>make-assembly</id>
+                    <phase>package</phase>
+                    <goals>
+                        <goal>single</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+
+        <!-- Configure the jar plugin to add the main class as a manifest entry -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <configuration>
+                <archive>
+                    <manifestEntries>
+                        <Main-Class>eu.enx.flink.paper01.DorotheaLassoRegression</Main-Class>
+                    </manifestEntries>
+                </archive>
+            </configuration>
+        </plugin>
+
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.1</version>
+            <configuration>
+                <source>1.6</source> <!-- If you want to use Java 8, change this to "1.8" -->
+                <target>1.6</target> <!-- If you want to use Java 8, change this to "1.8" -->
+            </configuration>
+        </plugin>
+    </plugins>
     </build>
+
+    <!--<build>-->
+        <!--<plugins>-->
+            <!--<plugin>-->
+                <!--<groupId>org.apache.maven.plugins</groupId>-->
+                <!--<artifactId>maven-jar-plugin</artifactId>-->
+                <!--<configuration>-->
+                    <!--<archive>-->
+                        <!--<manifest>-->
+                            <!--<addClasspath>true</addClasspath>-->
+                            <!--<mainClass>eu.enx.SSPJob</mainClass>-->
+                        <!--</manifest>-->
+                    <!--</archive>-->
+                <!--</configuration>-->
+            <!--</plugin>-->
+        <!--</plugins>-->
+    <!--</build>-->
 
 
 </project>
