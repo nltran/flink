@@ -9,6 +9,10 @@ import java.util.Map;
  */
 public class AggregatorEvent extends IterationEventWithAggregators{
 
+	public AggregatorEvent() {
+		super();
+	}
+
 	public AggregatorEvent(Map<String, Aggregator<?>> aggregators) {
 		super(aggregators);
 	}
