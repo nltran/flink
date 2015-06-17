@@ -91,7 +91,7 @@
                 </descriptors>
                 <archive>
                     <manifest>
-                        <mainClass>eu.enx.flink.paper01.DorotheaLassoRegression</mainClass>
+                        <mainClass>eu.enx.SSPJob</mainClass>
                     </manifest>
                 </archive>
             </configuration>
@@ -113,7 +113,7 @@
             <configuration>
                 <archive>
                     <manifestEntries>
-                        <Main-Class>eu.enx.flink.paper01.DorotheaLassoRegression</Main-Class>
+                        <Main-Class>eu.enx.SSPJob</Main-Class>
                     </manifestEntries>
                 </archive>
             </configuration>
