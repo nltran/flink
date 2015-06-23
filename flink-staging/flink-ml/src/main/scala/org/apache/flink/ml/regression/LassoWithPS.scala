@@ -101,7 +101,7 @@ class LassoWithPS(
           }
         }
 
-        initial.iterateWithTermination(numIter) {
+        initial.iterateWithSSPWithTermination(numIter) {
           residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
 
             val residual = residualApprox map (t => t._1)
@@ -181,7 +181,8 @@ class UpdateParameter(
   line_search: Boolean,
   epsilon: Double,
   maxIter: Int,
-  log: Boolean)
+  log: Boolean,
+  mode: String = "CD")
   extends RichMapFunctionWithSSPServer[AtomSet, (Array[Double], SparseParameterElement,
     Double)] with Serializable {
   var Y: DenseVector[Double] = null
@@ -200,7 +201,10 @@ class UpdateParameter(
   def map(in: AtomSet): (Array[Double], SparseParameterElement, Double) = {
     val t0 = System.nanoTime
 
-    val tt = getLogFilePath
+    if (log) {
+      val tt = getLogFilePath
+    }
+
     val iterationNumber = getIterationRuntimeContext.getSuperstepNumber
 
     var new_residual: DenseVector[Double] = null
@@ -307,7 +311,7 @@ class UpdateParameter(
     }
 
     val os = fs.create(path)
-    data.foreach(a => os.write(a.getBytes()))
+    data.foreach(a => os.write((a + "\n").getBytes()))
 
     fs.close()
   }
@@ -377,6 +381,7 @@ class UpdateParameterCD(
     if (log) {
       val tt = getLogFilePath
     }
+
     val iterationNumber = getIterationRuntimeContext.getSuperstepNumber
 
     var new_residual: DenseVector[Double] = null
@@ -483,7 +488,7 @@ class UpdateParameterCD(
     }
 
     val os = fs.create(path)
-    data.foreach(a => os.write(a.getBytes()))
+    data.foreach(a => os.write((a + "\n").getBytes()))
 
     fs.close()
   }
