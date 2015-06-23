@@ -23,6 +23,7 @@ import breeze.numerics.{abs, signum}
 import org.apache.flink.api.common.functions.{Partitioner, RichMapFunction}
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
+import com.github.fommil.netlib.BLAS.{ getInstance => blas }
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -60,7 +61,7 @@ class Lasso(
 
             val update = update_candidates reduce {
               (left, right) => {
-                left min right
+                left.max(right)
               }
             }
 
@@ -96,7 +97,7 @@ class Lasso(
 
             val update = update_candidates reduce {
               (left, right) => {
-                left min right
+                left.max(right)
               }
             }
 
@@ -143,12 +144,16 @@ case class SparseApproximation(
   idx: Array[Int],
   coef: Array[Double]) extends Serializable {
   def compute(): DenseVector[Double] = {
-    assert(!isEmpty())
-    new DenseMatrix[Double](atoms(0).length, atoms.length, atoms.flatten) *
-      new DenseVector[Double](coef)
+    if (!isEmpty) {
+      new DenseMatrix[Double](atoms(0).length, atoms.length, atoms.flatten) *
+        new DenseVector[Double](coef)
+    }
+    else {
+      DenseVector.zeros(0)
+    }
   }
 
-  def isEmpty(): Boolean = {
+  def isEmpty: Boolean = {
     atoms.length == 0
   }
 
@@ -173,8 +178,8 @@ object SparseApproximation extends Serializable {
 
 @SerialVersionUID(123L)
 case class Update(atom: ColumnVector, value: Double) extends Serializable {
-  def min(that: Update): Update = {
-    if (this.value < that.value) this
+  def max(that: Update): Update = {
+    if (abs(this.value) > abs(that.value)) this
     else that
   }
 }
@@ -188,17 +193,19 @@ class ColumnPartitioner extends Partitioner[Int] {
 }
 
 // Rich map functions
-
-class BestAtomFinder extends RichMapFunction[ColumnVector, Update] {
-  var residual: DenseVector[Double] = null
+@SerialVersionUID(123L)
+class BestAtomFinder extends RichMapFunction[ColumnVector, Update] with Serializable {
+  var residual: Array[Double] = null
+  var size: Int = 0
 
   override def open(config: Configuration): Unit = {
     val sol = getRuntimeContext.getBroadcastVariable[PartialLassoSolution]("solution").get(0)
-    residual = DenseVector(sol.residual)
+    residual = sol.residual
+    size = residual.length
   }
 
   def map(in: ColumnVector): Update = {
-    val grad = -DenseVector[Double](in.values) dot residual
+    val grad = - blas.ddot(size, in.values, 1, residual, 1)
     Update(in, grad)
   }
 }
@@ -236,7 +243,7 @@ class UpdateApproximation(beta: Double, line_search: Boolean = false)
     val PartialLassoSolution(residual, model, gap) = tuple
     val s_k: DenseVector[Double] = DenseVector[Double](update.atom.values) * (signum(-update
       .value) * beta)
-    val A_temp = if (model.isEmpty()) {
+    val A_temp = if (model.isEmpty) {
       s_k
     } else {
       approximation = model.compute()
@@ -254,7 +261,7 @@ class UpdateApproximation(beta: Double, line_search: Boolean = false)
 
     val v = gamma * beta * signum(-update.value)
 
-    if (model.isEmpty()) {
+    if (model.isEmpty) {
       new_residual = DenseVector(residual) - s_k * gamma
       new_sol = SparseApproximation(
         Array(update.atom.values),

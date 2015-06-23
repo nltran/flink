@@ -5,7 +5,7 @@ import breeze.stats.distributions.Gaussian
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
 import org.apache.flink.core.fs.FileSystem.WriteMode.OVERWRITE
-import org.apache.flink.ml.regression.{ColumnVector, Lasso}
+import org.apache.flink.ml.regression.{ColumnVector, LassoWithPS}
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -14,19 +14,18 @@ import org.apache.flink.ml.regression.{ColumnVector, Lasso}
 object DorotheaLassoRegression {
   def main(args: Array[String]): Unit = {
     val EPSILON = 1e-3
-    val PARALLELISM = 1
+    val PARALLELISM = 3
     val NUMITER = 100
-    val NORMALIZE = false
+    val NORMALIZE = true
     val LINESEARCH = true
-    val NOISE = 0.0
-    val OPT = "GR"
+    val OPT = "CD"
 
     val env = ExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(PARALLELISM)
 
     val beta = 1.0
 
-    val fw = new Lasso(
+    val fw = new LassoWithPS(
       beta = beta,
       numIter = NUMITER,
       normalize = NORMALIZE,
@@ -36,19 +35,14 @@ object DorotheaLassoRegression {
 
     val y = env.readTextFile(
       "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train_sub.labels"
-      //"/home/tpeel/data/archives.ics.uci.edu/dorothea/dorothea_train_sub.labels"
     ).setParallelism(1).map(x => x.toDouble)
 
     val Y = y.reduceGroup(iterator => iterator.toArray)
 
-//    val dimension = y.count.toInt
-
-    val dimension = 99
-    //    val Y = env.fromElements(DenseVector.rand[Double](dimension))
+    val dimension = y.count.toInt
 
     val csv = env.readCsvFile[(Int, String)](
       "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train_sub.csv",
-      //"/home/tpeel/data/archives.ics.uci.edu/dorothea/dorothea_train_sub.csv",
       ignoreFirstLine = true)
 
     val bagOfEntry = csv.flatMap {
@@ -72,7 +66,7 @@ object DorotheaLassoRegression {
       }
     )
 
-    val model = fw.fit(cols, Y).first(1)
+    val model = fw.fit(cols, Y, log = true).first(1)
 
     model.writeAsText(
       "hdfs://10.0.3.109/user/paper01/data/dorothea/result01.txt",
