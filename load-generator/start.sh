@@ -23,6 +23,13 @@ getTarget() {
   target=${targets[$(($RANDOM % ${#targets[*]}))]}
 }
 
+timestamp(){
+   while read line
+      do
+         echo -e "\e[34m**`date`**\e[0m $line"
+      done
+}
+
 # Initializing targets from file
 getArray "target"
 
@@ -31,9 +38,9 @@ while [ 1 ]
 do
   getTarget
   # echo "$target during $2 seconds"
-  echo "[[$target]]"
-  ssh enx@$target "stress -t $2 -c 1 -d 1"
-  echo "Putting next host under stress in $1 seconds..."
+  echo "Loading [[$target]]" | timestamp
+  ssh enx@$target "stress -t $2 -c 1 -d 1" |timestamp
+  echo "Putting next host under stress in $1 seconds..." | timestamp
   sleep $1
 done
 
