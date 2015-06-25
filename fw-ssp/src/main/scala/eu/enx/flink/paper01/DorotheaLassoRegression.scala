@@ -6,7 +6,7 @@ import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
 import org.apache.flink.core.fs.FileSystem.WriteMode.OVERWRITE
-import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
+import org.apache.flink.ml.regression.{LassoWithPS, ColumnVector, Lasso}
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -16,7 +16,7 @@ object DorotheaLassoRegression {
   def main(args: Array[String]): Unit = {
     val EPSILON = 1e-3
     val PARALLELISM = ConfigFactory.load("job.conf").getInt("cluster.nodes")
-    val NUMITER = 100
+    val NUMITER = 250
     val NORMALIZE = false
     val LINESEARCH = true
     val OPT = "CD"
@@ -27,7 +27,7 @@ object DorotheaLassoRegression {
 
     val beta = ConfigFactory.load("job.conf").getDouble("beta")
 
-    val fw = new Lasso(
+    val fw = new LassoWithPS(
       beta = beta,
       numIter = NUMITER,
       normalize = NORMALIZE,
@@ -59,7 +59,7 @@ object DorotheaLassoRegression {
       iterator => {
         val s = iterator.toSeq
         val id = s(0)._1
-        val indices = s.map{ case (row, col) => col }
+        val indices = s.map { case (row, col) => col }
         val v = new VectorBuilder[Double](dimension)
         for (c <- indices) {
           v.add(c, 1)
@@ -68,7 +68,7 @@ object DorotheaLassoRegression {
       }
     )
 
-    val model = fw.fit(cols, Y, log = true ).first(1)
+    val model = fw.fit(cols, Y, log = true).first(1)
 
     model.writeAsText(
       "hdfs://10.0.3.109/user/paper01/data/dorothea/eyeTestModel.txt",
@@ -97,44 +97,73 @@ object DorotheaLassoRegression {
     gen
   }
 
-  def signalGenerator(
-    colVec: DataSet[ColumnVector],
-    noise: Double,
-    coeff: DataSet[SparseEntry]): DataSet[Array[Double]] = {
-    val joinedDataSet = colVec.joinWithTiny(coeff).where("idx").equalTo("index")
-    val ret = joinedDataSet.map {
-      new ElementWiseMul
-    }.reduce {
-      (left, right) => (DenseVector(left) + DenseVector(right)).toArray
-    }
-    ret.map {
-      x => normalize(DenseVector(x) + DenseVector.rand[Double](x.length) *= noise).toArray
-    }
-  }
+  def loadSparseBinaryMatrix(env: ExecutionEnvironment, filename: String, dimension: Int):
+  DataSet[ColumnVector] = {
 
-  def sparseEntryGenerator(indices: Array[Int], coeff: Array[Double]): Array[SparseEntry] = {
-    indices.zip(coeff).map(x => SparseEntry(x._1, x._2))
-  }
-
-  case class SparseEntry(index: Int, value: Double)
-
-  case class SparseBinaryData(id: Int, values: Array[Int]) {
-    override def toString: String = {
-      val l = values.length
-      val s = if (l <= 10) {
-        "SparseBinaryVector(" + id + ", [" + values.mkString(" ") + "])"
-      } else {
-        "SparseBinaryVector(" + id + ", [" + values.slice(0, 3).mkString(" ") + " ... " +
-          values.slice(l - 3, l).mkString(" ") + "])"
+    val csv = env.readCsvFile[(Int, String)](
+      "hdfs://10.0.3.109/user/paper01/data/dorothea/test_data.csv",
+      ignoreFirstLine = true)
+    val bagOfEntry = csv.flatMap {
+      tuple => {
+        val id = tuple._1
+        val nonZeroCols = tuple._2.split(" ").map(x => x.toInt)
+        List.fill(nonZeroCols.length)(id).zip(nonZeroCols)
       }
-      s
-    }
-  }
+    }.groupBy(1)
 
-  class ElementWiseMul extends RichMapFunction[(ColumnVector, SparseEntry), Array[Double]] {
-    override def map(value: (ColumnVector, SparseEntry)): Array[Double] = {
-      (DenseVector(value._1.values) *= value._2.value).toArray
-    }
-  }
+    val cols = bagOfEntry.reduceGroup(
+      iterator => {
+        val s = iterator.toSeq
+        val id = s(0)._1
+        val indices = s.map { case (row, col) => col }
+        val v = new VectorBuilder[Double](dimension)
+        for (c <- indices) {
+          v.add(c, 1)
+        }
+        ColumnVector(id, v.toDenseVector.toArray)
+      })
 
-}
+    cols
+    }
+
+    def signalGenerator(
+      colVec: DataSet[ColumnVector],
+      noise: Double,
+      coeff: DataSet[SparseEntry]): DataSet[Array[Double]] = {
+      val joinedDataSet = colVec.joinWithTiny(coeff).where("idx").equalTo("index")
+      val ret = joinedDataSet.map {
+        new ElementWiseMul
+      }.reduce {
+        (left, right) => (DenseVector(left) + DenseVector(right)).toArray
+      }
+      ret.map {
+        x => normalize(DenseVector(x) + DenseVector.rand[Double](x.length) *= noise).toArray
+      }
+    }
+
+    def sparseEntryGenerator(indices: Array[Int], coeff: Array[Double]): Array[SparseEntry] = {
+      indices.zip(coeff).map(x => SparseEntry(x._1, x._2))
+    }
+
+    case class SparseEntry(index: Int, value: Double)
+
+    case class SparseBinaryData(id: Int, values: Array[Int]) {
+      override def toString: String = {
+        val l = values.length
+        val s = if (l <= 10) {
+          "SparseBinaryVector(" + id + ", [" + values.mkString(" ") + "])"
+        } else {
+          "SparseBinaryVector(" + id + ", [" + values.slice(0, 3).mkString(" ") + " ... " +
+            values.slice(l - 3, l).mkString(" ") + "])"
+        }
+        s
+      }
+    }
+
+    class ElementWiseMul extends RichMapFunction[(ColumnVector, SparseEntry), Array[Double]] {
+      override def map(value: (ColumnVector, SparseEntry)): Array[Double] = {
+        (DenseVector(value._1.values) *= value._2.value).toArray
+      }
+    }
+
+  }
