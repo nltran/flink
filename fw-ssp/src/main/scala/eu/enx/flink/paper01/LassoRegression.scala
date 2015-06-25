@@ -25,6 +25,8 @@ import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
 import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
 
+import scala.util.Try
+
 
 /**
  * This example implements a basic Lasso Regression with a distributed Franck-Wolfe optimization
@@ -36,23 +38,35 @@ import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
 
 object LassoRegression {
   def main(args: Array[String]) {
+
+    //begin for loop here
+    // iterator is i
+
+    def getPropInt(prop:String, i:Int):Int = Try(ConfigFactory.load("job.conf").getInt(i+"."+prop)).getOrElse(ConfigFactory.load("job.conf").getInt(prop))
+    def getPropString(prop:String, i:Int):String = Try(ConfigFactory.load("job.conf").getString(i+"."+prop)).getOrElse(ConfigFactory.load("job.conf").getString(prop))
+    def getPropDouble(prop:String, i:Int):Double = Try(ConfigFactory.load("job.conf").getDouble(i+"."+prop)).getOrElse(ConfigFactory.load("job.conf").getDouble(prop))
+
+    val i = 1
+
     val EPSILON = 1e-3
-    val PARALLELISM = ConfigFactory.load("job.conf").getInt("cluster.nodes")
+//    val PARALLELISM:Int = Try(ConfigFactory.load("job.conf").getInt(i+".cluster.nodes")).getOrElse(ConfigFactory.load("job.conf").getInt("cluster.nodes"))
+    val PARALLELISM = getPropInt("cluster.nodes", i)
     val NUMITER = 100
     val NORMALIZE = false
     val LINESEARCH = true
     val NOISE = 0.0
     val OPT = "GR"
+    val SLACK = getPropInt("slack", i)
 
     val dimension = 128
     val size = 1024
 
     val env = ExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(PARALLELISM)
-    env.setSSPSlack(ConfigFactory.load("job.conf").getInt("slack"))
+    env.setSSPSlack(SLACK)
     println("Slack is" + env.getSSPSlack())
 
-    val beta = ConfigFactory.load("job.conf").getDouble("beta")
+    val beta = getPropDouble("beta", i)
 
     val fw = new Lasso(
       beta = beta,
@@ -73,6 +87,8 @@ object LassoRegression {
     // Sink
     env.fromElements(model).first(1).print()
     env.execute()
+
+    // end for loop here
   }
 
   def columnGenerator(dim: Int, num: Int, dis: String): Stream[ColumnVector] = {

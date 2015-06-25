@@ -48,7 +48,8 @@ class LassoWithPS(
   def fit(
     data: DataSet[ColumnVector],
     target: DataSet[Array[Double]],
-    log: Boolean = false): DataSet[LassoModel] = {
+    log: Boolean = false,
+    slack:Int): DataSet[LassoModel] = {
     val Y = if (normalize) {
       target map { x => breeze.linalg.normalize(DenseVector(x)).toArray }
     } else {
@@ -57,7 +58,8 @@ class LassoWithPS(
 
     // Initialize parameter
     val initial = Y map { x => (x, SparseParameterElement.empty) }
-    val plainIterationMode = if (ConfigFactory.load("job.conf").getString("iteration").equals("plain")) true else false
+//    val plainIterationMode = if (ConfigFactory.load("job.conf").getString("iteration").equals("plain")) true else false
+//    val plainIterationMode = if (ConfigFactory.load("job.conf").getInt("slack").equals("plain")) true else false
 
     val iteration = opt match {
       // Coordinate-wise
@@ -65,7 +67,7 @@ class LassoWithPS(
         val splittedData = data.partitionCustom(new ColumnPartitioner, "idx")
           .mapPartition(colums => Some(colums.toArray))
 
-        if (plainIterationMode){
+        if (slack == 0){
 
             initial.iterateWithTermination(numIter) {
             residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
@@ -134,7 +136,7 @@ class LassoWithPS(
           }
         }
 
-        if (plainIterationMode) {
+        if (slack == 0 ) {
           initial.iterateWithTermination(numIter) {
             residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
 

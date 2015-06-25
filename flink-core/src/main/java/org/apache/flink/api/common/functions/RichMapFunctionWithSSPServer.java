@@ -23,16 +23,18 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 
 	private IgniteCache<String, ParameterElement> parameterCache = null;
 	private IgniteCache<String, Integer> clockCache = null;
+//	private IgniteCache<String, Boolean> convergenceCache = null;
 
 	@Override
 	public void open(Configuration parameters) throws Exception {
 		super.open(parameters);
 		wid = getRuntimeContext().getIndexOfThisSubtask();
 		System.out.println("This subtask ID is " + wid);
-		if (parameterCache == null   && clockCache == null ) {
+		if (parameterCache == null   && clockCache == null) {
 			Ignite ignite = Ignition.ignite(ParameterServerIgniteImpl.GRID_NAME);
 			parameterCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getParameterCacheConfiguration());
 			clockCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getClockCacheConfiguration());
+//			convergenceCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getConvergenceCacheConfiguration());
 		}
 
 
@@ -52,6 +54,10 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 //		return psInstance;
 		return null;
 	}
+
+//	protected void putConvergence(boolean b) {
+//		convergenceCache.put(Integer.toString(getRuntimeContext().getIndexOfThisSubtask()), b);
+//	}
 
 
 	protected void update(String id, ParameterElement el) {
