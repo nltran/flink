@@ -18,12 +18,12 @@
 
 package org.apache.flink.runtime.iterative.event;
 
-import java.io.IOException;
-import java.util.Map;
-
 import org.apache.flink.api.common.aggregators.Aggregator;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+
+import java.io.IOException;
+import java.util.Map;
 
 /**
  * This class provides a simple implementation of clock event as is used in A-BSP and SSP iterations.
@@ -70,7 +70,7 @@ public class ClockTaskEvent extends IterationEventWithAggregators {
 
 	@Override
 	public void write(final DataOutputView out) throws IOException {
-		out.writeLong(this.clock);
+		out.writeInt(this.clock);
 		super.write(out);
 //		StringRecord.writeString(out, Long.toString(this.clock));
 
@@ -85,21 +85,21 @@ public class ClockTaskEvent extends IterationEventWithAggregators {
 	}
 
 
-	@Override
-	public int hashCode() {
-		return ((int) (this.clock >>> 32)) ^ ((int) this.clock);
-	}
+//	@Override
+//	public int hashCode() {
+//		return ((int) (this.clock >>> 32)) ^ ((int) this.clock);
+//	}
 
 
-	@Override
-	public boolean equals(final Object obj) {
-
-		if (!(obj instanceof ClockTaskEvent)) {
-			return false;
-		}
-
-		final ClockTaskEvent ste = (ClockTaskEvent) obj;
-
-		return this.clock == ste.getClock();
-	}
+//	@Override
+//	public boolean equals(final Object obj) {
+//
+//		if (!(obj instanceof ClockTaskEvent)) {
+//			return false;
+//		}
+//
+//		final ClockTaskEvent ste = (ClockTaskEvent) obj;
+//
+//		return this.clock == ste.getClock();
+//	}
 }

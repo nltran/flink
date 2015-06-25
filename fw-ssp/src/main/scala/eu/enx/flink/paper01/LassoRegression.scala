@@ -20,6 +20,7 @@ package eu.enx.flink.paper01
 
 import breeze.linalg._
 import breeze.stats.distributions.Gaussian
+import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
 import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
@@ -36,7 +37,7 @@ import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
 object LassoRegression {
   def main(args: Array[String]) {
     val EPSILON = 1e-3
-    val PARALLELISM = 3
+    val PARALLELISM = ConfigFactory.load("job.conf").getInt("cluster.nodes")
     val NUMITER = 100
     val NORMALIZE = false
     val LINESEARCH = true
@@ -48,8 +49,10 @@ object LassoRegression {
 
     val env = ExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(PARALLELISM)
+    env.setSSPSlack(ConfigFactory.load("job.conf").getInt("slack"))
+    println("Slack is" + env.getSSPSlack())
 
-    val beta = 1.0
+    val beta = ConfigFactory.load("job.conf").getDouble("beta")
 
     val fw = new Lasso(
       beta = beta,
@@ -65,7 +68,7 @@ object LassoRegression {
     )
 
     val signal = signalGenerator(cols, NOISE, alpha)
-    val model = fw.fit(cols, signal)
+    val model = fw.fit(cols, signal, log = true)
 
     // Sink
     env.fromElements(model).first(1).print()

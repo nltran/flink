@@ -27,6 +27,9 @@ import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.ps.model.ParameterElement
 import org.apache.hadoop.fs.{FileSystem, Path}
+import java.nio.file.{StandardOpenOption, OpenOption, Paths, Files}
+import java.nio.charset.StandardCharsets
+import java.io.File
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -54,6 +57,7 @@ class LassoWithPS(
 
     // Initialize parameter
     val initial = Y map { x => (x, SparseParameterElement.empty) }
+    val plainIterationMode = if (ConfigFactory.load("job.conf").getString("iteration").equals("plain")) true else false
 
     val iteration = opt match {
       // Coordinate-wise
@@ -61,28 +65,57 @@ class LassoWithPS(
         val splittedData = data.partitionCustom(new ColumnPartitioner, "idx")
           .mapPartition(colums => Some(colums.toArray))
 
-        initial.iterateWithTermination(numIter) {
-          residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
+        if (plainIterationMode){
 
-            val residual = residualApprox map (t => t._1)
+            initial.iterateWithTermination(numIter) {
+            residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
 
-            val residual_param_gap = splittedData.map {
-              new UpdateParameterCD("alpha", beta, line_search, epsilon, numIter, log)
-            }.withBroadcastSet(Y, "Y").withBroadcastSet(residual, "residual")
+              val residual = residualApprox map (t => t._1)
 
-            // Seems that the duality gap in asynchronous setting is no longer a positive value at
-            // each iteration.
-            // Thus we take the absolute value of the dot product.
-            // Is it correct ?
-            val termination = residual_param_gap filter {
-              tuple => abs(tuple._3) >= epsilon
+              val residual_param_gap = splittedData.map {
+                new UpdateParameterCD("alpha", beta, line_search, epsilon, numIter, log)
+              }.withBroadcastSet(Y, "Y").withBroadcastSet(residual, "residual")
+
+              // Seems that the duality gap in asynchronous setting is no longer a positive value at
+              // each iteration.
+              // Thus we take the absolute value of the dot product.
+              // Is it correct ?
+              val termination = residual_param_gap filter {
+                tuple => abs(tuple._3) >= epsilon
+              }
+
+              val next = residual_param_gap map {
+                tuple => (tuple._1, tuple._2)
+              }
+
+              (next, termination)
             }
+          }
+      }
+        else {
+          initial.iterateWithSSPWithTermination(numIter) {
+            residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
 
-            val next = residual_param_gap map {
-              tuple => (tuple._1, tuple._2)
+              val residual = residualApprox map (t => t._1)
+
+              val residual_param_gap = splittedData.map {
+                new UpdateParameterCD("alpha", beta, line_search, epsilon, numIter, log)
+              }.withBroadcastSet(Y, "Y").withBroadcastSet(residual, "residual")
+
+              // Seems that the duality gap in asynchronous setting is no longer a positive value at
+              // each iteration.
+              // Thus we take the absolute value of the dot product.
+              // Is it correct ?
+              val termination = residual_param_gap filter {
+                tuple => abs(tuple._3) >= epsilon
+              }
+
+              val next = residual_param_gap map {
+                tuple => (tuple._1, tuple._2)
+              }
+
+              (next, termination)
             }
-
-            (next, termination)
           }
         }
       }
@@ -101,28 +134,57 @@ class LassoWithPS(
           }
         }
 
-        initial.iterateWithSSPWithTermination(numIter) {
-          residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
+        if (plainIterationMode) {
+          initial.iterateWithTermination(numIter) {
+            residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
 
-            val residual = residualApprox map (t => t._1)
+              val residual = residualApprox map (t => t._1)
 
-            val residual_param_gap = matrices map {
-              new UpdateParameter("alpha", beta, line_search, epsilon, numIter, log)
-            } withBroadcastSet(Y, "Y") withBroadcastSet(residual, "residual")
+              val residual_param_gap = matrices map {
+                new UpdateParameter("alpha", beta, line_search, epsilon, numIter, log)
+              } withBroadcastSet(Y, "Y") withBroadcastSet(residual, "residual")
 
-            // Seems that the duality gap in asynchronous setting is no longer a positive value at
-            // each iteration.
-            // Thus we take the absolute value of the dot product.
-            // Is it correct ?
-            val termination = residual_param_gap filter {
-              tuple => abs(tuple._3) >= epsilon
+              // Seems that the duality gap in asynchronous setting is no longer a positive value at
+              // each iteration.
+              // Thus we take the absolute value of the dot product.
+              // Is it correct ?
+              val termination = residual_param_gap filter {
+                tuple => abs(tuple._3) >= epsilon
+              }
+
+              val next = residual_param_gap map {
+                tuple => (tuple._1, tuple._2)
+              }
+
+              (next, termination)
             }
+          }
+        }
 
-            val next = residual_param_gap map {
-              tuple => (tuple._1, tuple._2)
+        else {
+          initial.iterateWithSSPWithTermination(numIter) {
+            residualApprox: DataSet[(Array[Double], SparseParameterElement)] => {
+
+              val residual = residualApprox map (t => t._1)
+
+              val residual_param_gap = matrices map {
+                new UpdateParameter("alpha", beta, line_search, epsilon, numIter, log)
+              } withBroadcastSet(Y, "Y") withBroadcastSet(residual, "residual")
+
+              // Seems that the duality gap in asynchronous setting is no longer a positive value at
+              // each iteration.
+              // Thus we take the absolute value of the dot product.
+              // Is it correct ?
+              val termination = residual_param_gap filter {
+                tuple => abs(tuple._3) >= epsilon
+              }
+
+              val next = residual_param_gap map {
+                tuple => (tuple._1, tuple._2)
+              }
+
+              (next, termination)
             }
-
-            (next, termination)
           }
         }
       }
@@ -196,6 +258,7 @@ class UpdateParameter(
       jobConf = ConfigFactory.load("job.conf")
       if (logBuf == null) logBuf = scala.collection.mutable.ListBuffer.empty[String]
     }
+    println("Slack is: "+ getRuntimeContext.getExecutionConfig.getSSPSlack)
   }
 
   def map(in: AtomSet): (Array[Double], SparseParameterElement, Double) = {
@@ -272,8 +335,9 @@ class UpdateParameter(
       logBuf += produceLogEntry(index, norm(new_residual), t1 - t0)
 
       if (isConverged(maxIter, duality_gap, epsilon)) {
-        println("writing to hdfs")
-        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+        println("writing to: "+ getLogFilePath)
+//        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+        writeToDisk(getLogFileDir, getLogFilePath, logBuf.toList)
       }
     }
     (new_residual.toArray, new_param, duality_gap)
@@ -292,8 +356,19 @@ class UpdateParameter(
     val workerID = getRuntimeContext.getIndexOfThisSubtask
     val sampleID = 0
 
-    val res = "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
+    val res = "/home/enx/flink/results" + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
       "/" + workerID + ".csv"
+    res
+  }
+
+  def getLogFileDir: String = {
+    val clusterSetting = jobConf.getInt("cluster.nodes")
+    val rootdir = jobConf.getString("hdfs.result_rootdir")
+    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val sampleID = 0
+
+    val res = "/home/enx/flink/results" +  "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID
     res
   }
 
@@ -314,6 +389,20 @@ class UpdateParameter(
     data.foreach(a => os.write((a + "\n").getBytes()))
 
     fs.close()
+  }
+
+  /**
+   * Writes the results to the disk
+    * @param path
+   * @param data
+   */
+
+  def writeToDisk(dir: String, path:String, data:List[String]): Unit = {
+    val file = new File(path)
+    file.getParentFile.mkdirs()
+    file.createNewFile()
+    Files.createDirectories(Paths.get(dir))
+    data.foreach( a => Files.write(Paths.get(path),(a+"\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE ))
   }
 
   /**
@@ -373,6 +462,7 @@ class UpdateParameterCD(
       jobConf = ConfigFactory.load("job.conf")
       if (logBuf == null) logBuf = scala.collection.mutable.ListBuffer.empty[String]
     }
+    println("Slack is: "+ getRuntimeContext.getExecutionConfig.getSSPSlack)
   }
 
   def map(in: Array[ColumnVector]): (Array[Double], SparseParameterElement, Double) = {
@@ -449,9 +539,11 @@ class UpdateParameterCD(
       logBuf += produceLogEntry(index, norm(new_residual), t1 - t0)
 
       if (isConverged(maxIter, duality_gap, epsilon)) {
-        println("writing to hdfs")
-        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+        println("writing to: " + getLogFilePath)
+//        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+        writeToDisk(getLogFileDir, getLogFilePath, logBuf.toList)
       }
+
     }
     (new_residual.toArray, new_param, duality_gap)
   }
@@ -469,8 +561,19 @@ class UpdateParameterCD(
     val workerID = getRuntimeContext.getIndexOfThisSubtask
     val sampleID = 0
 
-    val res = "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
+    val res = "/home/enx/flink/results/" + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
       "/" + workerID + ".csv"
+    res
+  }
+
+  def getLogFileDir: String = {
+    val clusterSetting = jobConf.getInt("cluster.nodes")
+    val rootdir = jobConf.getString("hdfs.result_rootdir")
+    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
+    val workerID = getRuntimeContext.getIndexOfThisSubtask
+    val sampleID = 0
+
+    val res = "/home/enx/flink/results/" +  "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID
     res
   }
 
@@ -519,6 +622,20 @@ class UpdateParameterCD(
     }
     converged
 
+  }
+
+  /**
+   * Writes the results to the disk
+   * @param path
+   * @param data
+   */
+
+  def writeToDisk(dir: String, path:String, data:List[String]): Unit = {
+    val file = new File(path)
+    file.getParentFile.mkdirs()
+    file.createNewFile()
+    Files.createDirectories(Paths.get(dir))
+    data.foreach( a => Files.write(Paths.get(path),(a+"\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE ))
   }
 
   override def close() = {

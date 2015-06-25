@@ -20,11 +20,27 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	public final static String CACHE_NAME = ParameterServerIgniteImpl.class.getSimpleName();
 
+	public final static String GRID_NAME = "FLINK_PARAMETER_SERVER";
+
+	public static CacheConfiguration<String, ParameterElement> getParameterCacheConfiguration() {
+		CacheConfiguration<String, ParameterElement> parameterCacheCfg = new CacheConfiguration<String, ParameterElement>();
+		parameterCacheCfg.setCacheMode(CacheMode.PARTITIONED);
+		parameterCacheCfg.setName(CACHE_NAME + "_parameter");
+		return parameterCacheCfg;
+	}
+
+	public static CacheConfiguration<String, Integer> getClockCacheConfiguration() {
+		CacheConfiguration<String, Integer> clockCacheCfg = new CacheConfiguration<String, Integer>();
+		clockCacheCfg.setCacheMode(CacheMode.PARTITIONED);
+		clockCacheCfg.setName(CACHE_NAME + "_clock");
+		return clockCacheCfg;
+	}
+
 	private Ignite ignite = null;
 	private IgniteCache<String, ParameterElement> parameterCache = null;
 	private IgniteCache<String, Integer> clockCache = null;
 
-	public ParameterServerIgniteImpl(String name) {
+	public ParameterServerIgniteImpl(String name, boolean client) {
 		try {
 			CacheConfiguration<String, ParameterElement> parameterCacheCfg = new CacheConfiguration<String, ParameterElement>();
 			parameterCacheCfg.setCacheMode(CacheMode.PARTITIONED);
@@ -35,11 +51,19 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 			clockCacheCfg.setName(CACHE_NAME + "_clock");
 
 			IgniteConfiguration cfg1 = new IgniteConfiguration();
-//			cfg1.setClientMode(true);
 			cfg1.setGridName(name);
 			cfg1.setPeerClassLoadingEnabled(true);
 			cfg1.setCacheConfiguration(parameterCacheCfg, clockCacheCfg);
-			//Ignition.setClientMode(true);
+
+			if(client) {
+				cfg1.setClientMode(true);
+				Ignition.setClientMode(true);
+			}
+			if(log.isInfoEnabled()) {
+				String mode = client?"client":"server";
+				log.info("Starting ps " + name + " in "+ mode + " mode");
+			}
+
 			this.ignite = Ignition.start(cfg1);
 
 			parameterCache = ignite.getOrCreateCache(parameterCacheCfg);
@@ -74,6 +98,7 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	@Override
 	public void shutDown() {
+		Ignition.stopAll(true);
 		ignite.close();
 	}
 

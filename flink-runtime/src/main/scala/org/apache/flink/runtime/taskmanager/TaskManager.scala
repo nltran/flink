@@ -37,6 +37,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.flink.api.common.cache.DistributedCache
 import org.apache.flink.configuration._
 import org.apache.flink.core.fs.Path
+import org.apache.flink.ps.impl.ParameterServerIgniteImpl
 import org.apache.flink.runtime.ActorLogMessages
 import org.apache.flink.runtime.akka.AkkaUtils
 import org.apache.flink.runtime.blob.{BlobService, BlobCache}
@@ -167,6 +168,7 @@ extends Actor with ActorLogMessages with ActorLogging {
 
   private var heartbeatScheduler: Option[Cancellable] = None
 
+  private var ps : ParameterServerIgniteImpl = null
 
   // --------------------------------------------------------------------------
   //  Actor messages and life cycle
@@ -181,6 +183,10 @@ extends Actor with ActorLogMessages with ActorLogging {
     LOG.info("Starting TaskManager actor at {}.", self.path.toSerializationFormat)
     LOG.info("TaskManager data connection information: {}", connectionInfo)
     LOG.info("TaskManager has {} task slot(s).", numberOfSlots)
+
+    LOG.info("TaskManager is starting a parameter server")
+    ps = new ParameterServerIgniteImpl(ParameterServerIgniteImpl.GRID_NAME, false)
+
 
     // log the initial memory utilization
     if (LOG.isInfoEnabled) {
@@ -235,6 +241,8 @@ extends Actor with ActorLogMessages with ActorLogging {
     } catch {
       case t: Exception => LOG.error("FileCache did not shutdown properly.", t)
     }
+
+    ps.shutDown()
 
     LOG.info("Task manager {} is completely shut down.", self.path)
   }
