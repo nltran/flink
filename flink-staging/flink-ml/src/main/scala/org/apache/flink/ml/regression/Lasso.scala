@@ -294,7 +294,7 @@ class UpdateApproximation(beta: Double, line_search: Boolean = false, epsilon:Do
     val workerID = getRuntimeContext.getIndexOfThisSubtask
     val sampleID = 0
 
-    val res = "/home/enx/flink/results" + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
+    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
       "/" + workerID + ".csv"
     res
   }
@@ -306,7 +306,7 @@ class UpdateApproximation(beta: Double, line_search: Boolean = false, epsilon:Do
     val workerID = getRuntimeContext.getIndexOfThisSubtask
     val sampleID = 0
 
-    val res = "/home/enx/flink/results" +  "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID
+    val res = jobConf.getString("log.rootdir") +  "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID
     res
   }
 
