@@ -17,7 +17,7 @@ object DorotheaLassoRegression {
     val EPSILON = 1e-3
     val PARALLELISM = ConfigFactory.load("job.conf").getInt("cluster.nodes")
     val NUMITER = 100
-    val NORMALIZE = true
+    val NORMALIZE = false
     val LINESEARCH = true
     val OPT = "CD"
 
@@ -36,7 +36,6 @@ object DorotheaLassoRegression {
       opt = OPT)
 
     val y = env.readTextFile(
-//      "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train_sub.labels"
       "hdfs://10.0.3.109/user/paper01/data/dorothea/test_target.csv"
     ).setParallelism(1).map(x => x.toDouble)
 
@@ -45,23 +44,22 @@ object DorotheaLassoRegression {
     val dimension = y.count.toInt
 
     val csv = env.readCsvFile[(Int, String)](
-//      "hdfs://10.0.3.109/user/paper01/data/dorothea/dorothea_train_sub.csv",
       "hdfs://10.0.3.109/user/paper01/data/dorothea/test_data.csv",
       ignoreFirstLine = true)
 
     val bagOfEntry = csv.flatMap {
       tuple => {
         val id = tuple._1
-        val values = tuple._2.split(" ").map(x => x.toInt)
-        List.fill(values.length)(id).zip(values)
+        val nonZeroCols = tuple._2.split(" ").map(x => x.toInt)
+        List.fill(nonZeroCols.length)(id).zip(nonZeroCols)
       }
     }.groupBy(1)
 
     val cols = bagOfEntry.reduceGroup(
       iterator => {
         val s = iterator.toSeq
-        val id = s(0)._2
-        val indices = s map { case (a, b) => a }
+        val id = s(0)._1
+        val indices = s.map{ case (row, col) => col }
         val v = new VectorBuilder[Double](dimension)
         for (c <- indices) {
           v.add(c, 1)
@@ -73,7 +71,7 @@ object DorotheaLassoRegression {
     val model = fw.fit(cols, Y, log = true ).first(1)
 
     model.writeAsText(
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/result01.txt",
+      "hdfs://10.0.3.109/user/paper01/data/dorothea/eyeTestModel.txt",
       OVERWRITE
     )
 
