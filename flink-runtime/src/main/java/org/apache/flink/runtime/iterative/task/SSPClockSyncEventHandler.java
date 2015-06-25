@@ -55,10 +55,15 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 
 	private final int numberOfEventsUntilEndOfSuperstep;
 
-
 	private final MutableBag<Integer> workersClocks;
 
 	private Map<Integer, Integer> clocks;
+
+	private int lastWorkerIndex = -1;
+
+	public int getLastWorkerIndex() {
+		return lastWorkerIndex;
+	}
 
 
 	public SSPClockSyncEventHandler(int numberOfEventsUntilEndOfSuperstep, Map<String, Aggregator<?>> aggregators, ClassLoader userCodeClassLoader) {
@@ -110,6 +115,8 @@ public class SSPClockSyncEventHandler implements EventListener<TaskEvent> {
 
 		int workerIndex = workerClockEvent.getWorkerIndex();
 		int workerClock = workerClockEvent.getWorkerClock();
+
+		lastWorkerIndex = workerIndex;
 
 		log.info("Worker " + workerIndex + " is at clock " + workerClock);
 
