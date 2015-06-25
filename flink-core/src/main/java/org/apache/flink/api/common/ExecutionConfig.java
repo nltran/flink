@@ -191,7 +191,7 @@ public class ExecutionConfig implements Serializable {
 	 *         returns {@code -1}, if the environment's default parallelism should be used.
 	 */
 	public int getParallelism() {
-		return parallelism;
+		return  parallelism;
 	}
 
 	/**

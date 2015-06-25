@@ -268,6 +268,8 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 		boolean waitForSolutionSetUpdate = config.getWaitForSolutionSetUpdate();
 		boolean isWorksetIteration = config.getIsWorksetIteration();
 
+//		ParameterServerIgniteImpl ps = new ParameterServerIgniteImpl(ParameterServerIgniteImpl.GRID_NAME, false);
+
 		try {
 			/* used for receiving the current iteration result from iteration tail */
 			SuperstepKickoffLatch nextStepKickoff = new SuperstepKickoffLatch();
@@ -329,6 +331,7 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 			IterationAggregatorBroker.instance().handIn(brokerKey, aggregatorRegistry);
 
 			DataInputView superstepResult = null;
+
 
 			while (this.running && !terminationRequested()) {
 
@@ -423,6 +426,7 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 			SuperstepKickoffLatchBroker.instance().remove(brokerKey);
 			SolutionSetBroker.instance().remove(brokerKey);
 			SolutionSetUpdateBarrierBroker.instance().remove(brokerKey);
+//			ps.shutDown();
 
 			if (solutionSet != null) {
 				solutionSet.close();

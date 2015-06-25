@@ -2,6 +2,7 @@ package eu.enx.flink.paper01
 
 import breeze.linalg.{DenseVector, VectorBuilder, normalize}
 import breeze.stats.distributions.Gaussian
+import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
 import org.apache.flink.core.fs.FileSystem.WriteMode.OVERWRITE
@@ -14,7 +15,7 @@ import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
 object DorotheaLassoRegression {
   def main(args: Array[String]): Unit = {
     val EPSILON = 1e-3
-    val PARALLELISM = 2
+    val PARALLELISM = ConfigFactory.load("job.conf").getInt("cluster.nodes")
     val NUMITER = 100
     val NORMALIZE = false
     val LINESEARCH = true
@@ -22,8 +23,9 @@ object DorotheaLassoRegression {
 
     val env = ExecutionEnvironment.getExecutionEnvironment
     env.setParallelism(PARALLELISM)
+    env.setSSPSlack(ConfigFactory.load("job.conf").getInt("slack"))
 
-    val beta = 2.6
+    val beta = ConfigFactory.load("job.conf").getDouble("beta")
 
     val fw = new Lasso(
       beta = beta,
@@ -66,8 +68,7 @@ object DorotheaLassoRegression {
       }
     )
 
-//    val model = fw.fit(cols, Y, log = true).first(1)
-    val model = fw.fit(cols, Y).first(1)
+    val model = fw.fit(cols, Y, log = true ).first(1)
 
     model.writeAsText(
       "hdfs://10.0.3.109/user/paper01/data/dorothea/eyeTestModel.txt",
