@@ -25,6 +25,8 @@ object DorotheaLassoRegression {
     env.setParallelism(PARALLELISM)
     env.setSSPSlack(ConfigFactory.load("job.conf").getInt("slack"))
 
+    val model_dir = "/home/enx/flink/results/eye"
+
     val beta = ConfigFactory.load("job.conf").getDouble("beta")
 
     val fw = new LassoWithPS(
@@ -71,7 +73,7 @@ object DorotheaLassoRegression {
     val model = fw.fit(cols, Y, log = true).first(1)
 
     model.writeAsText(
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/eyeTestModel.txt",
+      "hdfs://10.0.3.109/" + model_dir + ".txt",
       OVERWRITE
     )
 

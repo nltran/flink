@@ -323,7 +323,13 @@ class UpdateParameter(
         new_sol = SparseApproximation(model.atoms, model.idx, coef.toArray)
       }
     }
-    println("Residual norm = " + norm(new_residual) + " Duality_gap = " + duality_gap + "##### " +
+
+    val residualNorm = norm(new_residual)
+
+    println("Worker = "+ getRuntimeContext.getIndexOfThisSubtask+ " Residual norm = " +
+      residualNorm + " Duality_gap = "
+    + duality_gap +
+      "##### " +
       "Actual clock : " + el.getClock)
 
     // Update parameter server
@@ -334,13 +340,14 @@ class UpdateParameter(
 
     // Logs
     if (log) {
-      logBuf += produceLogEntry(index, norm(new_residual), t1 - t0)
+      //logBuf += produceLogEntry(index, norm(new_residual), t1 - t0)
 
-      if (isConverged(maxIter, duality_gap, epsilon)) {
-        println("writing to: "+ getLogFilePath)
+      //if (isConverged(maxIter, duality_gap, epsilon)) {
+        //println("writing to: "+ getLogFilePath)
 //        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
-        writeToDisk(getLogFileDir, getLogFilePath, logBuf.toList)
-      }
+    writeToDisk(getLogFileDir, getLogFilePath,
+      produceLogEntry(index, residualNorm, duality_gap, t1 - t0))
+      //}
     }
     (new_residual.toArray, new_param, duality_gap)
   }
@@ -399,23 +406,24 @@ class UpdateParameter(
    * @param data
    */
 
-  def writeToDisk(dir: String, path:String, data:List[String]): Unit = {
-    val file = new File(path)
-    file.getParentFile.mkdirs()
-    file.createNewFile()
+  def writeToDisk(dir: String, path:String, data:String): Unit = {
+    //val file = new File(path)
+    //file.getParentFile.mkdirs()
+    //file.createNewFile()
     Files.createDirectories(Paths.get(dir))
-    data.foreach( a => Files.write(Paths.get(path),(a+"\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE ))
+    Files.write(Paths.get(path),(data+"\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption
+      .APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE )
   }
 
   /**
    * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
    * @return a CSV String with the log entry
    */
-  def produceLogEntry(atomIndex: Int, dualityGap: Double, time: Long): String = {
+  def produceLogEntry(atomIndex: Int, residual: Double, dualityGap: Double, time: Long): String = {
     val workerID = getRuntimeContext.getIndexOfThisSubtask
     val clock = getIterationRuntimeContext.getSuperstepNumber
 
-    val res = workerID + "," + clock + "," + atomIndex + "," + time + "," + dualityGap
+    val res = List(workerID, clock, atomIndex, time, residual, dualityGap).mkString(",")
     println("log entry: " + res)
     res
   }
@@ -528,7 +536,8 @@ class UpdateParameterCD(
         new_sol = SparseApproximation(model.atoms, model.idx, coef.toArray)
       }
     }
-    println("Residual norm = " + norm(new_residual) + " Duality_gap = " + duality_gap + "##### " +
+    println("Worker = "+ getRuntimeContext.getIndexOfThisSubtask+" Residual norm = " + norm
+      (new_residual) + " Duality_gap = " + duality_gap + "##### " +
       "Actual clock : " + el.getClock)
 
     // Update parameter server
@@ -538,7 +547,7 @@ class UpdateParameterCD(
     val t1 = System.nanoTime
 
     if (log) {
-      logBuf += produceLogEntry(index, norm(new_residual), t1 - t0)
+      logBuf += produceLogEntry(index, norm(new_residual), duality_gap, t1 - t0)
 
       if (isConverged(maxIter, duality_gap, epsilon)) {
         println("writing to: " + getLogFilePath)
@@ -602,11 +611,11 @@ class UpdateParameterCD(
    * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
    * @return a CSV String with the log entry
    */
-  def produceLogEntry(atomIndex: Int, dualityGap: Double, time: Long): String = {
+  def produceLogEntry(atomIndex: Int, residual: Double, dualityGap: Double, time: Long): String = {
     val workerID = getRuntimeContext.getIndexOfThisSubtask
     val clock = getIterationRuntimeContext.getSuperstepNumber
 
-    val res = workerID + "," + clock + "," + atomIndex + "," + time + "," + dualityGap
+    val res = List(workerID, clock, atomIndex, time, residual, dualityGap).mkString(",")
     println("log entry: " + res)
     res
   }

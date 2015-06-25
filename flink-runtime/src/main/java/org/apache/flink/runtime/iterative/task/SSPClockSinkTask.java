@@ -82,6 +82,8 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 
 	private Map<Integer, Boolean> convergenceMap = null;
 
+	private int tasksInParallel = -1;
+
 //	private int slack = 3;
 
 
@@ -97,7 +99,7 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 		TaskConfig taskConfig = new TaskConfig(getTaskConfiguration());
 		//TODO very ugly. Pass this to the TaskConfiguration
 		int slack = getExecutionConfig().getSSPSlack()> -1 ? getExecutionConfig().getSSPSlack(): 3;
-
+		tasksInParallel = taskConfig.getNumberOfEventsUntilInterruptInIterativeGate(0);
 		
 		// store all aggregators
 		this.aggregators = new HashMap<String, Aggregator<?>>();
@@ -227,7 +229,9 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 			Value aggregate = aggregator.getAggregate();
 
 			if (convergenceCriterion.isConverged(currentIteration, aggregate)) {
-				if(convergenceMap.size() == getCurrentNumberOfSubtasks()) {
+				convergenceMap.put(eventHandler.getLastWorkerIndex(), true);
+
+				if(convergenceMap.size() == tasksInParallel) {
 					for(Map.Entry<Integer, Boolean> e : convergenceMap.entrySet()) {
 						if(e.getValue() == false) {
 							return false;
@@ -239,6 +243,9 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 					}
 					return true;
 				}
+			}
+			else {
+				convergenceMap.put(eventHandler.getLastWorkerIndex(), false);
 			}
 		}
 		
