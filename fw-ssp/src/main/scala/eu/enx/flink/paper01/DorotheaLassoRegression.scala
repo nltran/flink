@@ -7,77 +7,105 @@ import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
 import org.apache.flink.core.fs.FileSystem.WriteMode.OVERWRITE
 import org.apache.flink.ml.regression.{LassoWithPS, ColumnVector, Lasso}
+import org.slf4j.LoggerFactory
+
+import scala.util.Try
 
 /**
  * Created by Thomas Peel @ Eura Nova
  * on 12/06/15.
  */
 object DorotheaLassoRegression {
+
+  val LOG = LoggerFactory.getLogger(DorotheaLassoRegression.getClass)
+
   def main(args: Array[String]): Unit = {
-    val EPSILON = 1e-3
-    val PARALLELISM = ConfigFactory.load("job.conf").getInt("cluster.nodes")
-    val NUMITER = 250
-    val NORMALIZE = false
-    val LINESEARCH = true
-    val OPT = "CD"
 
-    val env = ExecutionEnvironment.getExecutionEnvironment
-    env.setParallelism(PARALLELISM)
-    env.setSSPSlack(ConfigFactory.load("job.conf").getInt("slack"))
+    for( i <- 1 to 2)
+      {
+        LOG.info("Starting paper job # " + i)
+        val jobConf = ConfigFactory.load("job.conf")
 
-    val model_dir = "/home/enx/flink/results/eye"
+        def getPropInt(prop: String, i: Int): Int = Try(ConfigFactory.load("job.conf").getInt(i + "." + prop)).getOrElse(ConfigFactory.load("job.conf").getInt(prop))
+        def getPropString(prop: String, i: Int): String = Try(ConfigFactory.load("job.conf").getString(i + "." + prop)).getOrElse(ConfigFactory.load("job.conf").getString(prop))
+        def getPropDouble(prop: String, i: Int): Double = Try(ConfigFactory.load("job.conf").getDouble(i + "." + prop)).getOrElse(ConfigFactory.load("job.conf").getDouble(prop))
 
-    val beta = ConfigFactory.load("job.conf").getDouble("beta")
+        val EPSILON = getPropDouble("epsilon", i)
+        val PARALLELISM = getPropInt("cluster.nodes", i)
+        val NUMITER = getPropInt("max.iterations", i)
+        val NORMALIZE = false
+        val LINESEARCH = true
+        val OPT = "CD"
+        val SLACK = getPropInt("slack", i)
+        val BETA = getPropDouble("beta", i)
 
-    val fw = new LassoWithPS(
-      beta = beta,
-      numIter = NUMITER,
-      normalize = NORMALIZE,
-      line_search = LINESEARCH,
-      epsilon = EPSILON,
-      opt = OPT)
-
-    val y = env.readTextFile(
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/test_target.csv"
-    ).setParallelism(1).map(x => x.toDouble)
-
-    val Y = y.reduceGroup(iterator => iterator.toArray)
-
-    val dimension = y.count.toInt
-
-    val csv = env.readCsvFile[(Int, String)](
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/test_data.csv",
-      ignoreFirstLine = true)
-
-    val bagOfEntry = csv.flatMap {
-      tuple => {
-        val id = tuple._1
-        val nonZeroCols = tuple._2.split(" ").map(x => x.toInt)
-        List.fill(nonZeroCols.length)(id).zip(nonZeroCols)
-      }
-    }.groupBy(1)
-
-    val cols = bagOfEntry.reduceGroup(
-      iterator => {
-        val s = iterator.toSeq
-        val id = s(0)._1
-        val indices = s.map { case (row, col) => col }
-        val v = new VectorBuilder[Double](dimension)
-        for (c <- indices) {
-          v.add(c, 1)
+        def getLogFileDir: String = {
+          val clusterSetting = jobConf.getInt("cluster.nodes")
+          val rootdir = jobConf.getString("hdfs.result_rootdir")
+          val slack = jobConf.getInt("slack")
+          val sampleID = 0
+          val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" + BETA + "_" + SLACK + "/" + sampleID
+          res
         }
-        ColumnVector(id, v.toDenseVector.toArray)
+        val env = ExecutionEnvironment.getExecutionEnvironment
+        env.setParallelism(PARALLELISM)
+        env.setSSPSlack(SLACK)
+
+        //    val model_dir = "/home/enx/flink/results/eye"
+
+        val fw = new LassoWithPS(
+          beta = BETA,
+          numIter = NUMITER,
+          normalize = NORMALIZE,
+          line_search = LINESEARCH,
+          epsilon = EPSILON,
+          opt = OPT)
+
+        val y = env.readTextFile(
+          "hdfs://10.0.3.109/user/paper01/data/dorothea/test_target.csv"
+        ).setParallelism(1).map(x => x.toDouble)
+
+        val Y = y.reduceGroup(iterator => iterator.toArray)
+
+        val dimension = y.count.toInt
+
+        val csv = env.readCsvFile[(Int, String)](
+          "hdfs://10.0.3.109/user/paper01/data/dorothea/test_data.csv",
+          ignoreFirstLine = true)
+
+        val bagOfEntry = csv.flatMap {
+          tuple => {
+            val id = tuple._1
+            val nonZeroCols = tuple._2.split(" ").map(x => x.toInt)
+            List.fill(nonZeroCols.length)(id).zip(nonZeroCols)
+          }
+        }.groupBy(1)
+
+        val cols = bagOfEntry.reduceGroup(
+          iterator => {
+            val s = iterator.toSeq
+            val id = s(0)._1
+            val indices = s.map { case (row, col) => col}
+            val v = new VectorBuilder[Double](dimension)
+            for (c <- indices) {
+              v.add(c, 1)
+            }
+            ColumnVector(id, v.toDenseVector.toArray)
+          }
+        )
+
+        val model = fw.fit(cols, Y, log = true, SLACK).first(1)
+
+        //    model.writeAsText(
+        //      "hdfs://10.0.3.109/" + model_dir + ".txt",
+        //      OVERWRITE
+        //    )
+
+        //    model.writeAsText("/tmp/lol",OVERWRITE)
+        model.writeAsText(getLogFileDir + "eye.txt", OVERWRITE)
+
+        env.execute()
       }
-    )
-
-    val model = fw.fit(cols, Y, log = true).first(1)
-
-    model.writeAsText(
-      "hdfs://10.0.3.109/" + model_dir + ".txt",
-      OVERWRITE
-    )
-
-    env.execute()
   }
 
   def columnGenerator(dim: Int, num: Int, dis: String): Stream[ColumnVector] = {
@@ -167,5 +195,4 @@ object DorotheaLassoRegression {
         (DenseVector(value._1.values) *= value._2.value).toArray
       }
     }
-
   }
