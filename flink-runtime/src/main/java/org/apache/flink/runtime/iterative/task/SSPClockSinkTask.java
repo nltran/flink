@@ -84,7 +84,6 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 
 	private int tasksInParallel = -1;
 
-//	private int slack = 3;
 
 
 	// --------------------------------------------------------------------------------------------
@@ -100,7 +99,7 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 		//TODO very ugly. Pass this to the TaskConfiguration
 		int slack = getExecutionConfig().getSSPSlack()> -1 ? getExecutionConfig().getSSPSlack(): 3;
 		tasksInParallel = taskConfig.getNumberOfEventsUntilInterruptInIterativeGate(0);
-		
+
 		// store all aggregators
 		this.aggregators = new HashMap<String, Aggregator<?>>();
 		for (AggregatorWithName<?> aggWithName : taskConfig.getIterationAggregators(getUserCodeClassLoader())) {
@@ -129,7 +128,7 @@ public class SSPClockSinkTask extends AbstractInvokable implements Terminable {
 //		convergenceCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getConvergenceCacheConfiguration());
 
 		convergenceMap = new HashMap<Integer, Boolean>();
-		
+
 		while (!terminationRequested()) {
 
 //			notifyMonitor(IterationMonitoring.Event.SYNC_STARTING, currentIteration);
