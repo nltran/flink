@@ -16,7 +16,7 @@ object DorotheaLassoRegression {
   def main(args: Array[String]): Unit = {
     val EPSILON = 1e-3
     val PARALLELISM = ConfigFactory.load("job.conf").getInt("cluster.nodes")
-    val NUMITER = 250
+    val NUMITER = 10
     val NORMALIZE = false
     val LINESEARCH = true
     val OPT = "CD"
@@ -38,42 +38,22 @@ object DorotheaLassoRegression {
       opt = OPT)
 
     val y = env.readTextFile(
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/test_target.csv"
+      //"hdfs://10.0.3.109/user/paper01/data/dorothea/test_target.csv"
+    "/home/tpeel/GitLab/flink/fw-ssp/scripts/target-noise_0.0-sparsity_0.01-expe_0.csv"
     ).setParallelism(1).map(x => x.toDouble)
 
     val Y = y.reduceGroup(iterator => iterator.toArray)
 
     val dimension = y.count.toInt
 
-    val csv = env.readCsvFile[(Int, String)](
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/test_data.csv",
-      ignoreFirstLine = true)
-
-    val bagOfEntry = csv.flatMap {
-      tuple => {
-        val id = tuple._1
-        val nonZeroCols = tuple._2.split(" ").map(x => x.toInt)
-        List.fill(nonZeroCols.length)(id).zip(nonZeroCols)
-      }
-    }.groupBy(1)
-
-    val cols = bagOfEntry.reduceGroup(
-      iterator => {
-        val s = iterator.toSeq
-        val id = s(0)._1
-        val indices = s.map { case (row, col) => col }
-        val v = new VectorBuilder[Double](dimension)
-        for (c <- indices) {
-          v.add(c, 1)
-        }
-        ColumnVector(id, v.toDenseVector.toArray)
-      }
-    )
+    val cols = loadSparseMatrix(env,
+      "/home/tpeel/GitLab/flink/fw-ssp/scripts/data-noise_0.0-sparsity_0.01-expe_0.csv",
+      dimension, true)
 
     val model = fw.fit(cols, Y, log = true).first(1)
 
     model.writeAsText(
-      "hdfs://10.0.3.109/" + model_dir + ".txt",
+      "/home/tpeel/" + model_dir + ".txt",
       OVERWRITE
     )
 
@@ -99,12 +79,40 @@ object DorotheaLassoRegression {
     gen
   }
 
-  def loadSparseBinaryMatrix(env: ExecutionEnvironment, filename: String, dimension: Int):
+  def loadSparseMatrix(env: ExecutionEnvironment, filename: String, dimension: Int,
+    ignoreFirstLine:Boolean = true):
   DataSet[ColumnVector] = {
 
-    val csv = env.readCsvFile[(Int, String)](
-      "hdfs://10.0.3.109/user/paper01/data/dorothea/test_data.csv",
-      ignoreFirstLine = true)
+    val csv = env.readCsvFile[(Int, String)](filename, ignoreFirstLine = true)
+    val bagOfEntry = csv.flatMap {
+      tuple => {
+        val id = tuple._1
+        val nonZeroCols = tuple._2.split(" ").map{x => x.split(":")}.map(a => (id, a(0).toInt, a
+          (1).toDouble))
+        nonZeroCols
+      }
+    }.groupBy(1)
+
+    val cols = bagOfEntry.reduceGroup(
+      iterator => {
+        val s = iterator.toSeq
+        val col = s(0)._2
+        val v = new VectorBuilder[Double](dimension)
+        for ((row, _, value) <- s) {
+          println(col+ ", "+row + ", " + value)
+          v.add(row, value)
+        }
+        ColumnVector(col, v.toDenseVector.toArray)
+      })
+
+    cols
+  }
+
+  def loadSparseBinaryMatrix(env: ExecutionEnvironment, filename: String, dimension: Int,
+    ignoreFirstLine:Boolean = true):
+  DataSet[ColumnVector] = {
+
+    val csv = env.readCsvFile[(Int, String)](filename, ignoreFirstLine = true)
     val bagOfEntry = csv.flatMap {
       tuple => {
         val id = tuple._1
@@ -119,8 +127,8 @@ object DorotheaLassoRegression {
         val id = s(0)._1
         val indices = s.map { case (row, col) => col }
         val v = new VectorBuilder[Double](dimension)
-        for (c <- indices) {
-          v.add(c, 1)
+        for (colIndex <- indices) {
+          v.add(colIndex, 1)
         }
         ColumnVector(id, v.toDenseVector.toArray)
       })
