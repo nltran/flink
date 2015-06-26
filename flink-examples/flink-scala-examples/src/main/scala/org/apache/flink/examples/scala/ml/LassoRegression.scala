@@ -69,6 +69,7 @@ object LassoRegression {
       normalize = NORMALIZE,
       line_search = LINESEARCH,
       epsilon = EPSILON)
+
     val model = fw.fit(columns, Y, log = true)
 
     // Sink

@@ -36,6 +36,13 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 		return clockCacheCfg;
 	}
 
+	public static CacheConfiguration<String, Boolean> getConvergenceCacheConfiguration() {
+		CacheConfiguration<String, Boolean> convergenceCache = new CacheConfiguration<String, Boolean>();
+		convergenceCache.setCacheMode(CacheMode.PARTITIONED);
+		convergenceCache.setName(CACHE_NAME + "_convergence");
+		return convergenceCache;
+	}
+
 	private Ignite ignite = null;
 	private IgniteCache<String, ParameterElement> parameterCache = null;
 	private IgniteCache<String, Integer> clockCache = null;

@@ -51,7 +51,6 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 
 	private final int numberOfEventsUntilEndOfSuperstep;
 
-
 	private final MutableBag<Integer> workersClocks;
 
 	private Map<Integer, Integer> clocks;

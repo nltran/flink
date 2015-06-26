@@ -92,7 +92,7 @@
                 </descriptors>
                 <archive>
                     <manifest>
-                        <mainClass>eu.enx.SSPJob</mainClass>
+                        <mainClass>eu.enx.ScalaJob</mainClass>
                     </manifest>
                 </archive>
             </configuration>
@@ -114,7 +114,7 @@
             <configuration>
                 <archive>
                     <manifestEntries>
-                        <Main-Class>eu.enx.SSPJob</Main-Class>
+                        <Main-Class>eu.enx.ScalaJob</Main-Class>
                     </manifestEntries>
                 </archive>
             </configuration>
