@@ -103,6 +103,8 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 
 	private int feedbackDataInput; // workset or bulk partial solution
 
+//	ParameterServerIgniteImpl ps = null;
+
 //	private RuntimeAggregatorRegistry aggregatorRegistry;
 
 	// --------------------------------------------------------------------------------------------
@@ -268,7 +270,8 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 		boolean waitForSolutionSetUpdate = config.getWaitForSolutionSetUpdate();
 		boolean isWorksetIteration = config.getIsWorksetIteration();
 
-//		ParameterServerIgniteImpl ps = new ParameterServerIgniteImpl(ParameterServerIgniteImpl.GRID_NAME, false);
+		log.info("Starting own paramater server");
+//		ps = new ParameterServerIgniteImpl(ParameterServerIgniteImpl.GRID_NAME, false);
 
 		try {
 			/* used for receiving the current iteration result from iteration tail */
@@ -415,6 +418,7 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 			}
 
 			this.finalOutputCollector.close();
+//			ps.shutDown();
 
 		} finally {
 			// make sure we unregister everything from the broker:
@@ -482,4 +486,11 @@ public class SSPIterationHeadPactTask<X, Y, S extends Function, OT> extends Abst
 		}
 		this.toSync.writeEventToAllChannels(event);
 	}
+
+//	@Override
+//	public void requestTermination() {
+//		ps.shutDown();
+//		super.requestTermination();
+//	}
+
 }

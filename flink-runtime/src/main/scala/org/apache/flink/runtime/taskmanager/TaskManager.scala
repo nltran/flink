@@ -242,6 +242,7 @@ extends Actor with ActorLogMessages with ActorLogging {
       case t: Exception => LOG.error("FileCache did not shutdown properly.", t)
     }
 
+    LOG.info("Shutting down own parameter server")
     ps.shutDown()
 
     LOG.info("Task manager {} is completely shut down.", self.path)

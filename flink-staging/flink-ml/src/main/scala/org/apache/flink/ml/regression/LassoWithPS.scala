@@ -36,6 +36,13 @@ import java.io.File
  * on 20/05/15.
  */
 
+object PaperJob {
+  val jobConf = ConfigFactory.load("job.conf")
+  val NOISE = jobConf.getString("noise")
+  val SPARSITY = jobConf.getString("sparsity")
+  val SAMPLE_ID = jobConf.getString("sampleID")
+}
+
 class LassoWithPS(
   beta: Double,
   numIter: Int,
@@ -83,7 +90,7 @@ class LassoWithPS(
               // Thus we take the absolute value of the dot product.
               // Is it correct ?
               val termination = residual_param_gap filter {
-                tuple => abs(tuple._3) >= epsilon
+                tuple => tuple._3 >= epsilon
               }
 
               val next = residual_param_gap map {
@@ -109,7 +116,7 @@ class LassoWithPS(
               // Thus we take the absolute value of the dot product.
               // Is it correct ?
               val termination = residual_param_gap filter {
-                tuple => abs(tuple._3) >= epsilon
+                tuple => tuple._3 >= epsilon
               }
 
               val next = residual_param_gap map {
@@ -151,7 +158,7 @@ class LassoWithPS(
               // Thus we take the absolute value of the dot product.
               // Is it correct ?
               val termination = residual_param_gap filter {
-                tuple => abs(tuple._3) >= epsilon
+                tuple => tuple._3 >= epsilon
               }
 
               val next = residual_param_gap map {
@@ -178,7 +185,7 @@ class LassoWithPS(
               // Thus we take the absolute value of the dot product.
               // Is it correct ?
               val termination = residual_param_gap filter {
-                tuple => abs(tuple._3) >= epsilon
+                tuple => tuple._3 >= epsilon
               }
 
               val next = residual_param_gap map {
@@ -345,8 +352,12 @@ class UpdateParameter(
       //if (isConverged(maxIter, duality_gap, epsilon)) {
         //println("writing to: "+ getLogFilePath)
 //        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+
     writeToDisk(getLogFileDir, getLogFilePath,
       produceLogEntry(index, residualNorm, duality_gap, t1 - t0))
+
+
+
       //}
     }
     (new_residual.toArray, new_param, duality_gap)
@@ -359,14 +370,7 @@ class UpdateParameter(
    * @return the path to the log file for this worker
    */
   def getLogFilePath: String = {
-    val clusterSetting = jobConf.getInt("cluster.nodes")
-    val rootdir = jobConf.getString("hdfs.result_rootdir")
-    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val sampleID = 0
-
-    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
-      "/" + workerID + ".csv"
+    val res = getLogFileDir + getRuntimeContext.getIndexOfThisSubtask + ".csv"
     res
   }
 
@@ -374,10 +378,9 @@ class UpdateParameter(
     val clusterSetting = jobConf.getInt("cluster.nodes")
     val rootdir = jobConf.getString("hdfs.result_rootdir")
     val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val sampleID = 0
 
-    val res = jobConf.getString("log.rootdir") +  "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID
+    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "_" + PaperJob.NOISE +"_" + PaperJob.SPARSITY + "/" + PaperJob.SAMPLE_ID+
+      "/"
     res
   }
 
@@ -536,8 +539,9 @@ class UpdateParameterCD(
         new_sol = SparseApproximation(model.atoms, model.idx, coef.toArray)
       }
     }
-    println("Worker = "+ getRuntimeContext.getIndexOfThisSubtask+" Residual norm = " + norm
-      (new_residual) + " Duality_gap = " + duality_gap + "##### " +
+    val residualNorm = norm(new_residual)
+
+    println("Worker = "+ getRuntimeContext.getIndexOfThisSubtask+" Residual norm = " + residualNorm + " Duality_gap = " + duality_gap + "##### " +
       "Actual clock : " + el.getClock)
 
     // Update parameter server
@@ -547,13 +551,17 @@ class UpdateParameterCD(
     val t1 = System.nanoTime
 
     if (log) {
-      logBuf += produceLogEntry(index, norm(new_residual), duality_gap, t1 - t0)
+//      logBuf += produceLogEntry(index, norm(new_residual), duality_gap, t1 - t0)
+//
+//      if (isConverged(maxIter, duality_gap, epsilon)) {
+//        println("writing to: " + getLogFilePath)
+////        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
+//
+//        writeToDisk(getLogFileDir, getLogFilePath, logBuf.toList)
+//      }
 
-      if (isConverged(maxIter, duality_gap, epsilon)) {
-        println("writing to: " + getLogFilePath)
-//        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
-        writeToDisk(getLogFileDir, getLogFilePath, logBuf.toList)
-      }
+      writeToDisk(getLogFileDir, getLogFilePath,
+        produceLogEntry(index, residualNorm, duality_gap, t1 - t0))
 
     }
     (new_residual.toArray, new_param, duality_gap)
@@ -566,14 +574,7 @@ class UpdateParameterCD(
    * @return the path to the log file for this worker
    */
   def getLogFilePath: String = {
-    val clusterSetting = jobConf.getInt("cluster.nodes")
-    val rootdir = jobConf.getString("hdfs.result_rootdir")
-    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val sampleID = 0
-
-    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
-      "/" + workerID + ".csv"
+    val res = getLogFileDir + getRuntimeContext.getIndexOfThisSubtask + ".csv"
     res
   }
 
@@ -581,10 +582,9 @@ class UpdateParameterCD(
     val clusterSetting = jobConf.getInt("cluster.nodes")
     val rootdir = jobConf.getString("hdfs.result_rootdir")
     val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val sampleID = 0
 
-    val res = jobConf.getString("log.rootdir") +  "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID
+    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "_" + PaperJob.NOISE +"_" + PaperJob.SPARSITY + "/" + PaperJob.SAMPLE_ID+
+      "/"
     res
   }
 
@@ -641,12 +641,12 @@ class UpdateParameterCD(
    * @param data
    */
 
-  def writeToDisk(dir: String, path:String, data:List[String]): Unit = {
-    val file = new File(path)
-    file.getParentFile.mkdirs()
-    file.createNewFile()
+  def writeToDisk(dir: String, path:String, data:String): Unit = {
+//    val file = new File(path)
+//    file.getParentFile.mkdirs()
+//    file.createNewFile()
     Files.createDirectories(Paths.get(dir))
-    data.foreach( a => Files.write(Paths.get(path),(a+"\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE ))
+    Files.write(Paths.get(path),(data+"\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE )
   }
 
   override def close() = {

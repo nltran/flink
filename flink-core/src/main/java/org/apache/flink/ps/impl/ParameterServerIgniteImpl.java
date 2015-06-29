@@ -70,7 +70,6 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 				String mode = client?"client":"server";
 				log.info("Starting ps " + name + " in "+ mode + " mode");
 			}
-
 			this.ignite = Ignition.start(cfg1);
 
 			parameterCache = ignite.getOrCreateCache(parameterCacheCfg);
@@ -105,8 +104,10 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	@Override
 	public void shutDown() {
+		log.info("Stopping parameter server ...");
 		Ignition.stopAll(true);
 		ignite.close();
+		log.info("Parameter server successfully stopped.");
 	}
 
 	@Override

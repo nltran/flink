@@ -49,7 +49,6 @@ object LassoRegression {
     val i = 1
 
     val EPSILON = 1e-3
-//    val PARALLELISM:Int = Try(ConfigFactory.load("job.conf").getInt(i+".cluster.nodes")).getOrElse(ConfigFactory.load("job.conf").getInt("cluster.nodes"))
     val PARALLELISM = getPropInt("cluster.nodes", i)
     val NUMITER = 100
     val NORMALIZE = false
