@@ -20,6 +20,7 @@ def main(M, N):
             for noise in NOISE:
                 x_out = open('data-' + 'noise_' + str(noise) + '-sparsity_' + str(density) + '-expe_' + str(n) + '.csv', 'w')
                 y_out = open('target-' + 'noise_' + str(noise) + '-sparsity_' + str(density) + '-expe_' + str(n) + '.csv', 'w')
+                alpha_out = open('alpha-' + 'noise_' + str(noise) + '-sparsity_' + str(density) + '-expe_' + str(n) + '.csv', 'w')
 
                 if (PB_TYPE == 'random'):
                     X = sp.rand(N, M, density=density)
@@ -32,7 +33,7 @@ def main(M, N):
                 # Vector of weights
                 # alpha = sp.coo_matrix((weights, (index, np.zeros(len(weights)))), shape=(M, 1)).tocsr()
 
-                alpha = sp.rand(M, 1, density=1e-2)
+                alpha = normalize(sp.rand(M, 1, density=1e-2), norm='l1', axis=0)
 
                 Y = X.dot(alpha) + noise * normalize(np.random.rand(N, 1), axis=0)
 
@@ -51,5 +52,8 @@ def main(M, N):
                         x_out.write(str(col) + ':' + str(value) + ' ')
                     x_out.write('\n')
 
+                # Save alpha
+                # np.savetxt(alpha_out, alpha.toarray())
+                np.savetxt('alpha-' + 'noise_' + str(noise) + '-sparsity_' + str(density) + '-expe_' + str(n) + '.csv', alpha.toarray())
 if __name__ == '__main__':
     main(M, N)
