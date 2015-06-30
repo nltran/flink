@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.regression
+package eu.enx.flink.paper01
 
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -250,94 +250,17 @@ class GroupBestAtomFinder() extends RichMapFunction[MyMatrix, Update] {
 class UpdateApproximation(beta: Double, line_search: Boolean = false, epsilon:Double ,maxIter:Int ,log:Boolean)
   extends RichMapFunction[PartialLassoSolution, PartialLassoSolution] {
   var update: Update = null
-  var jobConf: Config = null
-  var logBuf: scala.collection.mutable.ListBuffer[String] = null
-
-  /**
-   * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
-   * @return a CSV String with the log entry
-   */
-  def produceLogEntry(atomIndex: Int, dualityGap: Double, time: Long): String = {
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val clock = getIterationRuntimeContext.getSuperstepNumber
-
-    val res = workerID + "," + clock + "," + atomIndex + "," + time + "," + dualityGap
-    println("log entry: " + res)
-    res
-  }
-
-  /**
-   * Given the current iteration and residual, returns true if the algorithm has converged
-   * @return true if the algorithm has converged
-   */
-  def isConverged(maxIterations: Int, duality_gap: Double, epsilon: Double): Boolean = {
-    val converged = if (getIterationRuntimeContext.getSuperstepNumber == maxIterations ||
-      duality_gap <= epsilon) {
-      true
-    } else {
-      false
-    }
-    converged
-
-  }
-
-  /**
-   * The path to the log file for each worker on HDFS looks like this:
-   * /cluster_setting/beta_slack/sampleID/workerID.csv
-   * TODO: getFilePath(workerID)
-   * @return the path to the log file for this worker
-   */
-  def getLogFilePath: String = {
-    val clusterSetting = jobConf.getInt("cluster.nodes")
-    val rootdir = jobConf.getString("hdfs.result_rootdir")
-    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val sampleID = 0
-
-    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID +
-      "/" + workerID + ".csv"
-    res
-  }
-
-  def getLogFileDir: String = {
-    val clusterSetting = jobConf.getInt("cluster.nodes")
-    val rootdir = jobConf.getString("hdfs.result_rootdir")
-    val slack = getRuntimeContext.getExecutionConfig.getSSPSlack
-    val workerID = getRuntimeContext.getIndexOfThisSubtask
-    val sampleID = 0
-
-    val res = jobConf.getString("log.rootdir") +  "/" + rootdir + "/" + clusterSetting + "/" + beta + "_" + slack + "/" + sampleID
-    res
-  }
-
-  /**
-   * Writes the results to the disk
-   * @param path
-   * @param data
-   */
-
-  def writeToDisk(dir: String, path:String, data:List[String]): Unit = {
-    val file = new File(path)
-    file.getParentFile.mkdirs()
-    file.createNewFile()
-    Files.createDirectories(Paths.get(dir))
-    data.foreach( a => Files.write(Paths.get(path),(a+"\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE ))
-  }
+  var logger: Logger = null
 
   override def open(config: Configuration): Unit = {
     update = getRuntimeContext.getBroadcastVariable[Update]("update").get(0)
     if (log) {
-      jobConf = ConfigFactory.load("job.conf")
-      if (logBuf == null) logBuf = scala.collection.mutable.ListBuffer.empty[String]
+      logger = new Logger(this, beta)
     }
   }
 
   def map(tuple: PartialLassoSolution): PartialLassoSolution = {
     val t0 = System.nanoTime
-
-    if (log) {
-      val tt = getLogFilePath
-    }
 
     var new_residual: DenseVector[Double] = null
     var new_sol: SparseApproximation = null
@@ -386,21 +309,17 @@ class UpdateApproximation(beta: Double, line_search: Boolean = false, epsilon:Do
         new_sol = SparseApproximation(model.atoms, model.idx, coef.toArray)
       }
     }
-    println("Residual norm = " + norm(new_residual) + " Duality_gap = " + duality_gap)
+
+    val residualNorm: Double = norm(new_residual)
+
+    println("Residual norm = " + residualNorm + " Duality_gap = " + duality_gap)
 
     val t1 = System.nanoTime
 
     // Logs
     if (log) {
-      logBuf += produceLogEntry(update.atom.idx, norm(new_residual), t1 - t0)
-
-      if (isConverged(maxIter, duality_gap, epsilon)) {
-        println("writing to: "+ getLogFilePath)
-        //        write(jobConf.getString("hdfs.uri"), getLogFilePath, logBuf.toList)
-        writeToDisk(getLogFileDir, getLogFilePath, logBuf.toList)
-      }
+      logger.writeToDisk(update.atom.idx, residualNorm, duality_gap, t0, t1)
     }
-
 
     PartialLassoSolution(new_residual.toArray, new_sol, duality_gap)
   }
