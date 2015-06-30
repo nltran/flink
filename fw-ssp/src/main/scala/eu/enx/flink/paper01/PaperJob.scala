@@ -5,6 +5,8 @@ package eu.enx.flink.paper01
  * on 20/05/15.
  */
 
+import com.typesafe.config.{ConfigFactory}
+
 object PaperJob {
   val jobConf = ConfigFactory.load("job.conf")
   val NOISE = jobConf.getString("noise")

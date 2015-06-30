@@ -1,16 +1,11 @@
 package eu.enx.flink.paper01
 
-import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Paths, StandardOpenOption}
-
 import breeze.linalg._
 import breeze.numerics._
 import com.github.fommil.netlib.BLAS.{ getInstance => blas }
-import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.flink.api.scala._
 import org.apache.flink.api.common.functions.RichMapFunctionWithSSPServer
 import org.apache.flink.configuration.Configuration
-import org.apache.hadoop.fs.{FileSystem, Path}
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -200,7 +195,12 @@ class UpdateParameter(
     super.open(config)
     Y = DenseVector(getRuntimeContext.getBroadcastVariable[Array[Double]]("Y").get(0))
     if (log) {
-      logger = new Logger(this, beta)
+      logger = new Logger(
+        getRuntimeContext.getIndexOfThisSubtask,
+        getIterationRuntimeContext.getSuperstepNumber,
+        getIterationRuntimeContext.getExecutionConfig.getSSPSlack,
+        beta
+      )
     }
     println("Slack is: " + getRuntimeContext.getExecutionConfig.getSSPSlack)
   }
@@ -307,7 +307,12 @@ class UpdateParameterCD(
     super.open(config)
     Y = DenseVector(getRuntimeContext.getBroadcastVariable[Array[Double]]("Y").get(0))
     if (log) {
-      logger = new Logger(this, beta)
+      logger = new Logger(
+        getRuntimeContext.getIndexOfThisSubtask,
+        getIterationRuntimeContext.getSuperstepNumber,
+        getIterationRuntimeContext.getExecutionConfig.getSSPSlack,
+        beta
+      )
     }
     size = Y.length
     println("Slack is: " + getRuntimeContext.getExecutionConfig.getSSPSlack)

@@ -1,10 +1,9 @@
 package eu.enx.flink.paper01
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.{StandardOpenOption, Paths, Files}
+import java.nio.file.{Files, Paths, StandardOpenOption}
 
-import com.typesafe.config.{ConfigFactory, Config}
-import org.apache.flink.api.common.functions.RichMapFunction
+import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.hadoop.fs.{FileSystem, Path}
 
 /**
@@ -12,7 +11,7 @@ import org.apache.hadoop.fs.{FileSystem, Path}
  * on 30/06/15.
  */
 
-class Logger(mapper: RichMapFunction, beta: Double) {
+class Logger(subtaskID: Int, clock: Int, slack: Int, beta: Double) {
   /**
    * The path to the log file for each worker on HDFS looks like this:
    * /cluster_setting/beta_slack/sampleID/workerID.csv
@@ -21,23 +20,6 @@ class Logger(mapper: RichMapFunction, beta: Double) {
    */
 
   var jobConf: Config = ConfigFactory.load("job.conf")
-
-  def getLogFilePath: String = {
-    val res = getLogFileDir + mapper.getRuntimeContext.getIndexOfThisSubtask + ".csv"
-    res
-  }
-
-  def getLogFileDir: String = {
-    val clusterSetting = jobConf.getInt("cluster.nodes")
-    val rootdir = jobConf.getString("hdfs.result_rootdir")
-    val slack = mapper.getRuntimeContext.getExecutionConfig.getSSPSlack
-
-    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" +
-      beta + "_" + slack + "_" + PaperJob.NOISE + "_" + PaperJob.SPARSITY + "/" + PaperJob
-      .SAMPLE_ID +
-      "/"
-    res
-  }
 
   /**
    * Writes the results to the disk
@@ -53,16 +35,32 @@ class Logger(mapper: RichMapFunction, beta: Double) {
       .APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
   }
 
+  def getLogFilePath: String = {
+    val res = getLogFileDir + subtaskID + ".csv"
+    res
+  }
+
+  def getLogFileDir: String = {
+    val clusterSetting = jobConf.getInt("cluster.nodes")
+    val rootdir = jobConf.getString("hdfs.result_rootdir")
+
+    val res = jobConf.getString("log.rootdir") + "/" + rootdir + "/" + clusterSetting + "/" +
+      beta + "_" + slack + "_" + PaperJob.NOISE + "_" + PaperJob.SPARSITY + "/" + PaperJob
+      .SAMPLE_ID +
+      "/"
+    res
+  }
+
   /**
    * Produces one line of log in the form (workerID, clock, atomID, worktime, residual)
    * @return a CSV String with the log entry
    */
-  def produceLogEntry(atomIndex: Int, residual: Double, dualityGap: Double, elapsedTime: Long,
+  def produceLogEntry(
+    atomIndex: Int, residual: Double, dualityGap: Double, elapsedTime: Long,
     startTime: Long): String = {
-    val workerID = mapper.getRuntimeContext.getIndexOfThisSubtask
-    val clock = mapper.getIterationRuntimeContext.getSuperstepNumber
 
-    val res = List(workerID, clock, atomIndex, elapsedTime, residual, dualityGap, startTime).mkString(",")
+    val res = List(subtaskID, clock, atomIndex, elapsedTime, residual, dualityGap, startTime)
+      .mkString(",")
     println("log entry: " + res)
     res
   }

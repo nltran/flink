@@ -20,15 +20,14 @@ package eu.enx.flink.paper01
 
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.nio.file.{StandardOpenOption, Paths, Files}
+import java.nio.file.{Files, Paths, StandardOpenOption}
 
 import breeze.linalg._
 import breeze.numerics.{abs, signum}
-import com.typesafe.config.{ConfigFactory, Config}
+import com.github.fommil.netlib.BLAS.{getInstance => blas}
 import org.apache.flink.api.common.functions.{Partitioner, RichMapFunction}
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
-import com.github.fommil.netlib.BLAS.{ getInstance => blas }
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -255,7 +254,12 @@ class UpdateApproximation(beta: Double, line_search: Boolean = false, epsilon:Do
   override def open(config: Configuration): Unit = {
     update = getRuntimeContext.getBroadcastVariable[Update]("update").get(0)
     if (log) {
-      logger = new Logger(this, beta)
+      logger = new Logger(
+        getRuntimeContext.getIndexOfThisSubtask,
+        getIterationRuntimeContext.getSuperstepNumber,
+        0,
+        beta
+      )
     }
   }
 
