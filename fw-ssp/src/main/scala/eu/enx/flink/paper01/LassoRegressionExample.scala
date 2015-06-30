@@ -21,7 +21,6 @@ package eu.enx.flink.paper01
 import breeze.linalg._
 import breeze.numerics._
 import org.apache.flink.api.scala._
-import org.apache.flink.ml.regression.{ColumnVector, Lasso}
 
 /**
  * This example implements a basic Lasso Regression with a distributed Franck-Wolfe optimization method.

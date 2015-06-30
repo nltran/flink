@@ -67,6 +67,7 @@ import org.apache.flink.runtime.security.SecurityUtils
 import org.apache.flink.runtime.security.SecurityUtils.FlinkSecuredRunner
 import org.apache.flink.runtime.util.{MathUtils, EnvironmentInformation}
 import org.apache.flink.util.ExceptionUtils
+import org.apache.ignite.Ignition
 
 import org.slf4j.LoggerFactory
 
@@ -185,6 +186,7 @@ extends Actor with ActorLogMessages with ActorLogging {
     LOG.info("TaskManager has {} task slot(s).", numberOfSlots)
 
     LOG.info("TaskManager is starting a parameter server")
+    Ignition.stopAll(true);
     ps = new ParameterServerIgniteImpl(ParameterServerIgniteImpl.GRID_NAME, false)
 
 
