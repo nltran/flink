@@ -6,6 +6,7 @@ import com.github.fommil.netlib.BLAS.{ getInstance => blas }
 import org.apache.flink.api.scala._
 import org.apache.flink.api.common.functions.RichMapFunctionWithSSPServer
 import org.apache.flink.configuration.Configuration
+import org.apache.flink.ml.{SparseApproximation, SparseParameterElement}
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -81,6 +82,7 @@ class LassoWithPS(
               val residual_param_gap = splittedData.map {
                 new UpdateParameterCD("alpha", beta, line_search, epsilon, numIter, log)
               }.withBroadcastSet(Y, "Y").withBroadcastSet(residual, "residual")
+
 
               // Seems that the duality gap in asynchronous setting is no longer a positive value at
               // each iteration.
@@ -305,17 +307,20 @@ class UpdateParameterCD(
 
   override def open(config: Configuration): Unit = {
     super.open(config)
-    Y = DenseVector(getRuntimeContext.getBroadcastVariable[Array[Double]]("Y").get(0))
+
+    if(Y==null) {
+      Y = DenseVector(getRuntimeContext.getBroadcastVariable[Array[Double]]("Y").get(0))
+      size = Y.length
+    }
     if (log) {
       logger = new Logger(
-        getRuntimeContext.getIndexOfThisSubtask,
-        getIterationRuntimeContext.getSuperstepNumber,
-        getIterationRuntimeContext.getExecutionConfig.getSSPSlack,
-        beta
+          getRuntimeContext.getIndexOfThisSubtask,
+          getIterationRuntimeContext.getSuperstepNumber,
+          getIterationRuntimeContext.getExecutionConfig.getSSPSlack,
+          beta
       )
     }
-    size = Y.length
-    println("Slack is: " + getRuntimeContext.getExecutionConfig.getSSPSlack)
+//    println("Slack is: " + getRuntimeContext.getExecutionConfig.getSSPSlack)
   }
 
   def map(in: Array[ColumnVector]): (Array[Double], SparseParameterElement, Double) = {
@@ -392,9 +397,5 @@ class UpdateParameterCD(
       logger.writeToDisk(index, residualNorm, duality_gap, t0, t1)
     }
     (new_residual.toArray, new_param, duality_gap)
-  }
-
-  override def close() = {
-    super.close()
   }
 }

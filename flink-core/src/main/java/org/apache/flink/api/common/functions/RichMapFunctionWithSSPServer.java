@@ -22,18 +22,19 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 	private int wid;
 
 	private IgniteCache<String, ParameterElement> parameterCache = null;
-	private IgniteCache<String, Integer> clockCache = null;
+//	private IgniteCache<String, Integer> clockCache = null;
 //	private IgniteCache<String, Boolean> convergenceCache = null;
 
 	@Override
 	public void open(Configuration parameters) throws Exception {
 		super.open(parameters);
 		wid = getRuntimeContext().getIndexOfThisSubtask();
-		System.out.println("This subtask ID is " + wid);
-		if (parameterCache == null   && clockCache == null) {
+//		System.out.println("This subtask ID is " + wid);
+//		if (parameterCache == null   && clockCache == null) {
+		if (parameterCache == null) {
 			Ignite ignite = Ignition.ignite(ParameterServerIgniteImpl.GRID_NAME);
 			parameterCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getParameterCacheConfiguration());
-			clockCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getClockCacheConfiguration());
+//			clockCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getClockCacheConfiguration());
 //			convergenceCache = ignite.getOrCreateCache(ParameterServerIgniteImpl.getConvergenceCacheConfiguration());
 		}
 
@@ -82,25 +83,25 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 //		return null;
 	}
 
-	protected void clock() {
-
-		Integer oldClock = clockCache.get(Integer.toString(wid));
-		if (oldClock == null) {
-			clockCache.put(Integer.toString(wid), 1);
-		} else {
-			clockCache.replace(Integer.toString(wid), oldClock + 1);
-		}
-		if (log.isInfoEnabled()) {
-			log.info("Worker " + wid + " is at clock " + clockCache.get(Integer.toString(wid)));
-		}
-//		if( psInstance != null) {
-//			psInstance.clock(getRuntimeContext().getIndexOfThisSubtask());
+//	protected void clock() {
+//
+//		Integer oldClock = clockCache.get(Integer.toString(wid));
+//		if (oldClock == null) {
+//			clockCache.put(Integer.toString(wid), 1);
+//		} else {
+//			clockCache.replace(Integer.toString(wid), oldClock + 1);
 //		}
-//		else {
-//			throw new NullPointerException("Parameter server should have been instantiated at this stage");
+//		if (log.isInfoEnabled()) {
+//			log.info("Worker " + wid + " is at clock " + clockCache.get(Integer.toString(wid)));
 //		}
-
-	}
+////		if( psInstance != null) {
+////			psInstance.clock(getRuntimeContext().getIndexOfThisSubtask());
+////		}
+////		else {
+////			throw new NullPointerException("Parameter server should have been instantiated at this stage");
+////		}
+//
+//	}
 
 	@Override
 	public void close() throws Exception {

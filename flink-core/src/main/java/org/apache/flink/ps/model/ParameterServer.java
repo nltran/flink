@@ -6,8 +6,8 @@ package org.apache.flink.ps.model;
 public interface ParameterServer {
 
 	public void update(String id, ParameterElement value);
-	public void clock(String wid);
-	public void clock(int wid);
+//	public void clock(String wid);
+//	public void clock(int wid);
 	public ParameterElement get(String id);
 	public void shutDown();
 

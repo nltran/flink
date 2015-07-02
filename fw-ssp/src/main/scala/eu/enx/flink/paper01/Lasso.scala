@@ -28,6 +28,7 @@ import com.github.fommil.netlib.BLAS.{getInstance => blas}
 import org.apache.flink.api.common.functions.{Partitioner, RichMapFunction}
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.Configuration
+import org.apache.flink.ml.SparseApproximation
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -142,43 +143,43 @@ case class MyMatrix(matrix: Array[Array[Double]], index: Array[Int]) extends Ser
 @SerialVersionUID(123L)
 case class ColumnVector(idx: Int, values: Array[Double]) extends Serializable
 
-@SerialVersionUID(123L)
-case class SparseApproximation(
-  atoms: Array[Array[Double]],
-  idx: Array[Int],
-  coef: Array[Double]) extends Serializable {
-  def compute(): DenseVector[Double] = {
-    if (!isEmpty) {
-      new DenseMatrix[Double](atoms(0).length, atoms.length, atoms.flatten) *
-        new DenseVector[Double](coef)
-    }
-    else {
-      DenseVector.zeros(0)
-    }
-  }
-
-  def isEmpty: Boolean = {
-    atoms.length == 0
-  }
-
-  def toSparseVector(length: Int): SparseVector[Double] = {
-    val builder = new VectorBuilder[Double](length)
-    val tuples = idx zip coef
-    for (t <- tuples) {
-      builder.add(t._1, t._2)
-    }
-    builder.toSparseVector
-  }
-}
-
-@SerialVersionUID(123L)
-object SparseApproximation extends Serializable {
-  def initialApproximation: SparseApproximation = {
-    new SparseApproximation(
-      Array.empty[Array[Double]], Array.empty[Int], Array.empty[Double]
-    )
-  }
-}
+//@SerialVersionUID(123L)
+//case class SparseApproximation(
+//  atoms: Array[Array[Double]],
+//  idx: Array[Int],
+//  coef: Array[Double]) extends Serializable {
+//  def compute(): DenseVector[Double] = {
+//    if (!isEmpty) {
+//      new DenseMatrix[Double](atoms(0).length, atoms.length, atoms.flatten) *
+//        new DenseVector[Double](coef)
+//    }
+//    else {
+//      DenseVector.zeros(0)
+//    }
+//  }
+//
+//  def isEmpty: Boolean = {
+//    atoms.length == 0
+//  }
+//
+//  def toSparseVector(length: Int): SparseVector[Double] = {
+//    val builder = new VectorBuilder[Double](length)
+//    val tuples = idx zip coef
+//    for (t <- tuples) {
+//      builder.add(t._1, t._2)
+//    }
+//    builder.toSparseVector
+//  }
+//}
+//
+//@SerialVersionUID(123L)
+//object SparseApproximation extends Serializable {
+//  def initialApproximation: SparseApproximation = {
+//    new SparseApproximation(
+//      Array.empty[Array[Double]], Array.empty[Int], Array.empty[Double]
+//    )
+//  }
+//}
 
 @SerialVersionUID(123L)
 case class Update(atom: ColumnVector, value: Double) extends Serializable {

@@ -1,4 +1,4 @@
-package eu.enx.flink.paper01
+package org.apache.flink.ml
 
 import org.apache.flink.ps.model.ParameterElement
 

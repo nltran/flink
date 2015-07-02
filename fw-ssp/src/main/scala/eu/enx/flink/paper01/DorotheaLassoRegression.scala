@@ -59,7 +59,7 @@ object DorotheaLassoRegression {
     env.setParallelism(PARALLELISM)
     env.setSSPSlack(SLACK)
 
-    val fw = new Lasso(
+    val fw = new LassoWithPS(
       beta = BETA,
       numIter = NUMITER,
       normalize = NORMALIZE,
@@ -83,9 +83,11 @@ object DorotheaLassoRegression {
         "-expe_" + i + ".csv",
       dimension, true)
 
-//    val model = fw.fit(cols, Y, log = true, SLACK).first(1)
-    val model = fw.fit(cols, Y, log = true).first(1)
+    val model = fw.fit(cols, Y, log = true, SLACK).first(1)
+//    val model = fw.fit(cols, Y, log = true).first(1)
     model.writeAsText(getLogFileDir + "model.txt", OVERWRITE)
+
+//    cols.print()
 
     env.execute()
   }

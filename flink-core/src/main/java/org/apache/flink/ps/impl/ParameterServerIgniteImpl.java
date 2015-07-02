@@ -5,6 +5,7 @@ import org.apache.flink.ps.model.ParameterServer;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.Ignition;
+import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -24,24 +25,19 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	public static CacheConfiguration<String, ParameterElement> getParameterCacheConfiguration() {
 		CacheConfiguration<String, ParameterElement> parameterCacheCfg = new CacheConfiguration<String, ParameterElement>();
-		parameterCacheCfg.setCacheMode(CacheMode.PARTITIONED);
+		parameterCacheCfg.setCacheMode(CacheMode.REPLICATED);
 		parameterCacheCfg.setName(CACHE_NAME + "_parameter");
+		parameterCacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
+//		parameterCacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
 		return parameterCacheCfg;
 	}
 
-	public static CacheConfiguration<String, Integer> getClockCacheConfiguration() {
-		CacheConfiguration<String, Integer> clockCacheCfg = new CacheConfiguration<String, Integer>();
-		clockCacheCfg.setCacheMode(CacheMode.PARTITIONED);
-		clockCacheCfg.setName(CACHE_NAME + "_clock");
-		return clockCacheCfg;
-	}
-
-	public static CacheConfiguration<String, Boolean> getConvergenceCacheConfiguration() {
-		CacheConfiguration<String, Boolean> convergenceCache = new CacheConfiguration<String, Boolean>();
-		convergenceCache.setCacheMode(CacheMode.PARTITIONED);
-		convergenceCache.setName(CACHE_NAME + "_convergence");
-		return convergenceCache;
-	}
+//	public static CacheConfiguration<String, Integer> getClockCacheConfiguration() {
+//		CacheConfiguration<String, Integer> clockCacheCfg = new CacheConfiguration<String, Integer>();
+//		clockCacheCfg.setCacheMode(CacheMode.PARTITIONED);
+//		clockCacheCfg.setName(CACHE_NAME + "_clock");
+//		return clockCacheCfg;
+//	}
 
 	private Ignite ignite = null;
 	private IgniteCache<String, ParameterElement> parameterCache = null;
@@ -49,18 +45,15 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	public ParameterServerIgniteImpl(String name, boolean client) {
 		try {
-			CacheConfiguration<String, ParameterElement> parameterCacheCfg = new CacheConfiguration<String, ParameterElement>();
-			parameterCacheCfg.setCacheMode(CacheMode.PARTITIONED);
-			parameterCacheCfg.setName(CACHE_NAME + "_parameter");
+			CacheConfiguration<String, ParameterElement> parameterCacheCfg = getParameterCacheConfiguration();
 
-			CacheConfiguration<String, Integer> clockCacheCfg = new CacheConfiguration<String, Integer>();
-			clockCacheCfg.setCacheMode(CacheMode.PARTITIONED);
-			clockCacheCfg.setName(CACHE_NAME + "_clock");
+//			CacheConfiguration<String, Integer> clockCacheCfg = getClockCacheConfiguration();
 
 			IgniteConfiguration cfg1 = new IgniteConfiguration();
 			cfg1.setGridName(name);
 			cfg1.setPeerClassLoadingEnabled(true);
-			cfg1.setCacheConfiguration(parameterCacheCfg, clockCacheCfg);
+//			cfg1.setCacheConfiguration(parameterCacheCfg, clockCacheCfg);
+			cfg1.setCacheConfiguration(parameterCacheCfg);
 
 			if(client) {
 				cfg1.setClientMode(true);
@@ -72,8 +65,11 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 			}
 			this.ignite = Ignition.start(cfg1);
 
-			parameterCache = ignite.getOrCreateCache(parameterCacheCfg);
-			clockCache = ignite.getOrCreateCache(clockCacheCfg);
+			parameterCache = ignite.getOrCreateCache(parameterCacheCfg).withAsync();
+
+			log.info("I hereby confirm that parameter cache is async enabled: " + parameterCache.isAsync());
+
+//			clockCache = ignite.getOrCreateCache(clockCacheCfg).withAsync();
 
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -82,25 +78,25 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	@Override
 	public void update(String id, ParameterElement value) {
-		parameterCache.put(id, value);
+		parameterCache.withAsync().put(id, value);
 	}
 
-	@Override
-	public void clock(String wid) {
-		Integer oldClock = clockCache.get(wid);
-		if (oldClock == null) {
-			clockCache.put(wid, 1);
-		} else {
-			clockCache.replace(wid, oldClock + 1);
-		}
-		if (log.isInfoEnabled()) {
-			log.info("Worker " + wid + " is at clock " + clockCache.get(wid));
-		}
-	}
+//	@Override
+//	public void clock(String wid) {
+//		Integer oldClock = clockCache.withAsync().get(wid);
+//		if (oldClock == null) {
+//			clockCache.withAsync().put(wid, 1);
+//		} else {
+//			clockCache.withAsync().replace(wid, oldClock + 1);
+//		}
+////		if (log.isInfoEnabled()) {
+////			log.info("Worker " + wid + " is at clock " + clockCache.get(wid));
+////		}
+//	}
 
-	public void clock(int wid) {
-		clock(Integer.toString(wid));
-	}
+//	public void clock(int wid) {
+//		clock(Integer.toString(wid));
+//	}
 
 	@Override
 	public void shutDown() {
@@ -112,7 +108,7 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	@Override
 	public ParameterElement get(String id) {
-		return parameterCache.get(id);
+		return parameterCache.localPeek(id);
 	}
 
 }

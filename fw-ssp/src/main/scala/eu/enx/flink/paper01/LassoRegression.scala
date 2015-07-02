@@ -23,7 +23,6 @@ import breeze.stats.distributions.Gaussian
 import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.scala._
-import org.apache.flink.ml.regression.{Lasso, ColumnVector, LassoWithPS}
 
 import scala.util.Try
 
@@ -67,7 +66,7 @@ object LassoRegression {
 
     val beta = getPropDouble("beta", i)
 
-    val fw = new Lasso(
+    val fw = new LassoWithPS(
       beta = beta,
       numIter = NUMITER,
       normalize = NORMALIZE,
@@ -81,7 +80,7 @@ object LassoRegression {
     )
 
     val signal = signalGenerator(cols, NOISE, alpha)
-    val model = fw.fit(cols, signal, log = true)
+    val model = fw.fit(cols, signal, log = true, SLACK)
 
     // Sink
     env.fromElements(model).first(1).print()

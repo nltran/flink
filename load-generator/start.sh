@@ -4,7 +4,7 @@
 # every t seconds
 
 targets=()
-RANDOM=12343
+RANDOM=12345
 
 # String (File) -> Array[String]
 # Reads all lines in a file and returns an array with 1 line = 1 array element
