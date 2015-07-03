@@ -320,15 +320,16 @@ class UpdateParameterCD(
 
     var approx = Array.fill(size)(0.0)
 
-    for (i <- 0 to model._1.size) {
-      val id = i.toString
-      val atom = getShared(id).asInstanceOf[AtomElement]
+    for (i <- 0 until model._1.size) {
+      val atom = getShared(model._1(i).toString).asInstanceOf[AtomElement]
       if (atom != null) {
         blas.daxpy(size, model._2(i), atom.getValue, 1, approx, 1)
       }
     }
 
-    val residual = Y
+    val residual = Array.fill(size)(0.0)
+    Y.copyToArray(residual)
+
     if (model._1.size > 0) {
       blas.daxpy(size, -1.0, approx, 1, residual, 1)
     }
@@ -359,6 +360,7 @@ class UpdateParameterCD(
     if (model._1.size == 0) {
       new_residual = DenseVector(residual) - s_k * gamma
       new_sol = new SparseCoefficientElement(0, (Array(index), Array(v)))
+      updateShared(index.toString, new AtomElement(0, atom))
     }
     else {
       new_residual = DenseVector(residual) + gamma * (DenseVector(approx) - s_k)
@@ -368,7 +370,7 @@ class UpdateParameterCD(
         val new_idx = (Array(index) ++ model._1).clone()
         val new_coef = Array(v) ++ coef.toArray
 //        val new_atoms = Array(atom) ++ model.atoms
-        updateShared(idx.toString, new AtomElement(0, atom))
+        updateShared(index.toString, new AtomElement(0, atom))
         new_sol = new SparseCoefficientElement(0, (new_idx, new_coef))
       } else {
         coef(idx) += v

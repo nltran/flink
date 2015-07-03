@@ -87,8 +87,6 @@ object DorotheaLassoRegression {
 //    val model = fw.fit(cols, Y, log = true).first(1)
     model.writeAsText(getLogFileDir + "model.txt", OVERWRITE)
 
-//    cols.print()
-
     env.execute()
   }
 
@@ -113,7 +111,7 @@ object DorotheaLassoRegression {
         val col = s(0)._2
         val v = new VectorBuilder[Double](dimension)
         for ((row, _, value) <- s) {
-          println(col + ", " + row + ", " + value)
+//          println(col + ", " + row + ", " + value)
           v.add(row, value)
         }
         ColumnVector(col, v.toDenseVector.toArray)
