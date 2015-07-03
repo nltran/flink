@@ -5,7 +5,6 @@ import org.apache.flink.ps.model.ParameterServer;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.Ignition;
-import org.apache.ignite.cache.CacheAtomicityMode;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -25,9 +24,8 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 
 	public static CacheConfiguration<String, ParameterElement> getParameterCacheConfiguration() {
 		CacheConfiguration<String, ParameterElement> parameterCacheCfg = new CacheConfiguration<String, ParameterElement>();
-		parameterCacheCfg.setCacheMode(CacheMode.REPLICATED);
+		parameterCacheCfg.setCacheMode(CacheMode.PARTITIONED);
 		parameterCacheCfg.setName(CACHE_NAME + "_parameter");
-		parameterCacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
 //		parameterCacheCfg.setAtomicityMode(CacheAtomicityMode.ATOMIC);
 		return parameterCacheCfg;
 	}
