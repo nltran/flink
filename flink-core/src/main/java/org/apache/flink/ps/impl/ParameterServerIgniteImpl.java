@@ -30,28 +30,32 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 		return parameterCacheCfg;
 	}
 
-//	public static CacheConfiguration<String, Integer> getClockCacheConfiguration() {
-//		CacheConfiguration<String, Integer> clockCacheCfg = new CacheConfiguration<String, Integer>();
-//		clockCacheCfg.setCacheMode(CacheMode.PARTITIONED);
-//		clockCacheCfg.setName(CACHE_NAME + "_clock");
-//		return clockCacheCfg;
-//	}
+	public static CacheConfiguration<String, ParameterElement> getSharedCacheConfiguration
+			() {
+		CacheConfiguration<String, ParameterElement> sharedCacheCfg = new
+				CacheConfiguration<String, ParameterElement>();
+		sharedCacheCfg.setCacheMode(CacheMode.REPLICATED);
+		sharedCacheCfg.setName(CACHE_NAME + "_SHARED");
+		return sharedCacheCfg;
+	}
 
 	private Ignite ignite = null;
 	private IgniteCache<String, ParameterElement> parameterCache = null;
-	private IgniteCache<String, Integer> clockCache = null;
+	private IgniteCache<String, ParameterElement> sharedCache = null;
 
 	public ParameterServerIgniteImpl(String name, boolean client) {
 		try {
 			CacheConfiguration<String, ParameterElement> parameterCacheCfg = getParameterCacheConfiguration();
+			CacheConfiguration<String, ParameterElement> sharedCacheCfg =
+					getSharedCacheConfiguration();
 
 //			CacheConfiguration<String, Integer> clockCacheCfg = getClockCacheConfiguration();
 
 			IgniteConfiguration cfg1 = new IgniteConfiguration();
 			cfg1.setGridName(name);
 			cfg1.setPeerClassLoadingEnabled(true);
-//			cfg1.setCacheConfiguration(parameterCacheCfg, clockCacheCfg);
-			cfg1.setCacheConfiguration(parameterCacheCfg);
+			cfg1.setCacheConfiguration(parameterCacheCfg, sharedCacheCfg);
+//			cfg1.setCacheConfiguration(parameterCacheCfg);
 
 			if(client) {
 				cfg1.setClientMode(true);
@@ -64,19 +68,18 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 			this.ignite = Ignition.start(cfg1);
 
 			parameterCache = ignite.getOrCreateCache(parameterCacheCfg).withAsync();
+            sharedCache = ignite.getOrCreateCache(sharedCacheCfg).withAsync();
 
 			log.info("I hereby confirm that parameter cache is async enabled: " + parameterCache.isAsync());
+            log.info("I hereby confirm that shared cache is async enabled: " + sharedCache
+                    .isAsync());
+
 
 //			clockCache = ignite.getOrCreateCache(clockCacheCfg).withAsync();
 
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-	}
-
-	@Override
-	public void update(String id, ParameterElement value) {
-		parameterCache.withAsync().put(id, value);
 	}
 
 //	@Override
@@ -103,10 +106,4 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 		ignite.close();
 		log.info("Parameter server successfully stopped.");
 	}
-
-	@Override
-	public ParameterElement get(String id) {
-		return parameterCache.localPeek(id);
-	}
-
 }
