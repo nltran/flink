@@ -69,18 +69,18 @@ object DorotheaLassoRegression {
 
     val y = env.readTextFile(
       //"hdfs://10.0.3.109/user/paper01/data/dorothea/test_target.csv"
-      "hdfs://10.0.3.109/user/paper01/data/target-noise_" + NOISE + "-sparsity_" + SPARSITY +
-        "-expe_" + i + ".csv"
-      //      "/home/tpeel/GitLab/flink/fw-ssp/scripts/target-noise_0.0-sparsity_0.01-expe_0.csv"
+//      "hdfs://10.0.3.109/user/paper01/data/target-noise_" + NOISE + "-sparsity_" + SPARSITY +
+//        "-expe_" + i + ".csv"
+            "/home/tpeel/GitLab/flink/fw-ssp/data/target-noise_0.0-sparsity_0.001-expe_0.csv"
     ).setParallelism(1).map(x => x.toDouble)
     val Y = y.reduceGroup(iterator => iterator.toArray)
 
     val dimension = y.count.toInt
 
     val cols = loadSparseMatrix(env,
-      //      "/home/tpeel/GitLab/flink/fw-ssp/scripts/data-noise_0.0-sparsity_0.01-expe_0.csv",
-      "hdfs://10.0.3.109/user/paper01/data/data-noise_" + NOISE + "-sparsity_" + SPARSITY +
-        "-expe_" + i + ".csv",
+            "/home/tpeel/GitLab/flink/fw-ssp/data/data-noise_0.0-sparsity_0.001-expe_0.csv",
+//      "hdfs://10.0.3.109/user/paper01/data/data-noise_" + NOISE + "-sparsity_" + SPARSITY +
+//        "-expe_" + i + ".csv",
       dimension, true)
 
     val model = fw.fit(cols, Y, log = true, SLACK).first(1)

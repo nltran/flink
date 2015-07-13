@@ -11,6 +11,8 @@ import org.apache.ignite.Ignition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Serializable;
+
 /**
  * Created by nltran on 12/05/15.
  */
@@ -42,8 +44,13 @@ implements ParameterServerClient {
 	}
 
     @Override
-	public void update(String id, ParameterElement el) {
-		parameterCache.withAsync().put(id, el);
+	public void update(String id, ParameterElement el, ParameterElement opt) {
+        ParameterElement dg = parameterCache.get("dg");
+        if (dg == null || ((Double) opt.getValue() <= (Double) dg.getValue())) {
+            parameterCache.put("dg", opt);
+            parameterCache.withAsync().put(id, el);
+        }
+//        parameterCache.withAsync().put(id, el);
 	}
 
     @Override
@@ -58,7 +65,7 @@ implements ParameterServerClient {
 
     @Override
     public ParameterElement getShared(String id) {
-        return sharedCache.get(id);
+        return sharedCache.localPeek(id);
     }
 
 	@Override
