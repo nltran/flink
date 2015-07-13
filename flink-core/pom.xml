@@ -67,13 +67,13 @@ under the License.
         <dependency>
             <groupId>org.apache.ignite</groupId>
             <artifactId>ignite-core</artifactId>
-            <version>1.2.0-incubating</version>
+            <version>1.0.0</version>
         </dependency>
 
         <dependency>
             <groupId>org.apache.ignite</groupId>
             <artifactId>ignite-spring</artifactId>
-            <version>1.2.0-incubating</version>
+            <version>1.0.0</version>
         </dependency>
 	</dependencies>
 

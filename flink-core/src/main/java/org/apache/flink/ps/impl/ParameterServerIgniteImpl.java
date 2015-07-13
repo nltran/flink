@@ -57,22 +57,22 @@ public class ParameterServerIgniteImpl implements ParameterServer {
 			cfg1.setCacheConfiguration(parameterCacheCfg, sharedCacheCfg);
 //			cfg1.setCacheConfiguration(parameterCacheCfg);
 
-			if(client) {
+			if (client) {
 				cfg1.setClientMode(true);
 				Ignition.setClientMode(true);
 			}
-			if(log.isInfoEnabled()) {
-				String mode = client?"client":"server";
-				log.info("Starting ps " + name + " in "+ mode + " mode");
+			if (log.isInfoEnabled()) {
+				String mode = client ? "client" : "server";
+				log.info("Starting ps " + name + " in " + mode + " mode");
 			}
 			this.ignite = Ignition.start(cfg1);
 
 			parameterCache = ignite.getOrCreateCache(parameterCacheCfg).withAsync();
-            sharedCache = ignite.getOrCreateCache(sharedCacheCfg).withAsync();
+			sharedCache = ignite.getOrCreateCache(sharedCacheCfg).withAsync();
 
 			log.info("I hereby confirm that parameter cache is async enabled: " + parameterCache.isAsync());
-            log.info("I hereby confirm that shared cache is async enabled: " + sharedCache
-                    .isAsync());
+			log.info("I hereby confirm that shared cache is async enabled: " + sharedCache
+					.isAsync());
 
 
 //			clockCache = ignite.getOrCreateCache(clockCacheCfg).withAsync();
