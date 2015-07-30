@@ -5,7 +5,7 @@ package org.apache.flink.ps.model;
  * on 3/07/15.
  */
 public interface ParameterServerClient {
-	public void update(String id, ParameterElement value);
+	public void update(String id, ParameterElement value, ParameterElement<Double> opt);
 
 	public void updateShared(String id, ParameterElement value);
 

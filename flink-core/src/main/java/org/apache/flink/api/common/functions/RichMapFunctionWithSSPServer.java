@@ -41,8 +41,14 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 	}
 
 	@Override
-	public void update(String id, ParameterElement el) {
-		parameterCache.withAsync().put(id, el);
+	public void update(String id, ParameterElement el, ParameterElement opt) {
+		ParameterElement dg = parameterCache.get("dg");
+		if (dg == null || ((Double) opt.getValue() <= (Double) dg.getValue())) {
+			parameterCache.put("dg", opt);
+			parameterCache.withAsync().put(id, el);
+		}
+//        parameterCache.withAsync().put(id, el);
+
 	}
 
 	@Override
@@ -55,9 +61,10 @@ public abstract class RichMapFunctionWithSSPServer<IN, OUT> extends RichMapFunct
 		return parameterCache.get(id);
 	}
 
+
 	@Override
 	public ParameterElement getShared(String id) {
-		return sharedCache.get(id);
+		return sharedCache.localPeek(id);
 	}
 
 	@Override

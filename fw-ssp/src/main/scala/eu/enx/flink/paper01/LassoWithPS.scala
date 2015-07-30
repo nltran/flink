@@ -1,5 +1,7 @@
 package eu.enx.flink.paper01
 
+import java.lang
+
 import breeze.linalg._
 import breeze.numerics._
 import com.github.fommil.netlib.BLAS.{ getInstance => blas }
@@ -7,6 +9,7 @@ import org.apache.flink.api.scala._
 import org.apache.flink.api.common.functions.RichMapFunctionWithSSPServer
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.ml.{AtomElement, SparseCoefficientElement}
+import org.apache.flink.ps.model.ParameterElement
 
 /**
  * Created by Thomas Peel @ Eura Nova
@@ -273,6 +276,13 @@ class UpdateParameter(
   }
 }
 */
+
+case class DualityGapElement(value: Double) extends ParameterElement[Double] with Serializable {
+  def getClock: Int = 0
+
+  def getValue: Double = value
+}
+
 @SerialVersionUID(123L)
 class UpdateParameterCD(
     id: String,
@@ -385,7 +395,7 @@ class UpdateParameterCD(
 
     // Update parameter server
 //    val new_param = new SparseParameterElement(iterationNumber, new_sol)
-    update(id, new_sol)
+    update(id, new_sol, new DualityGapElement(residualNorm))
 
     val t1 = System.nanoTime
 
