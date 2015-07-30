@@ -23,11 +23,18 @@ import java.util.List;
 
 import org.apache.commons.math.util.MathUtils;
 import org.apache.flink.streaming.api.functions.co.CoWindowFunction;
+import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
+import org.apache.flink.streaming.api.operators.TimestampedCollector;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.state.CircularFifoList;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.helper.TimestampWrapper;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public class CoStreamWindow<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OUT> {
+public class CoStreamWindow<IN1, IN2, OUT>
+		extends AbstractUdfStreamOperator<OUT, CoWindowFunction<IN1, IN2, OUT>>
+		implements TwoInputStreamOperator<IN1, IN2, OUT> {
+
 	private static final long serialVersionUID = 1L;
 
 	protected long windowSize;
@@ -41,6 +48,12 @@ public class CoStreamWindow<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OU
 
 	protected long startTime;
 	protected long nextRecordTime;
+
+	// We keep track of watermarks from both inputs, the combined input is the minimum
+	// Once the minimum advances we emit a new watermark for downstream operators
+	private long combinedWatermark = Long.MIN_VALUE;
+	private long input1Watermark = Long.MAX_VALUE;
+	private long input2Watermark = Long.MAX_VALUE;
 
 	public CoStreamWindow(CoWindowFunction<IN1, IN2, OUT> coWindowFunction, long windowSize,
 			long slideInterval, TimestampWrapper<IN1> timeStamp1, TimestampWrapper<IN2> timeStamp2) {
@@ -57,31 +70,54 @@ public class CoStreamWindow<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OU
 	}
 
 	@Override
-	protected void handleStream1() throws Exception {
-		window.addToBuffer1(reuse1.getObject());
+	public void processElement1(StreamRecord<IN1> element) throws Exception {
+		window.addToBuffer1(element.getValue());
 	}
 
 	@Override
-	protected void handleStream2() throws Exception {
-		window.addToBuffer2(reuse2.getObject());
+	public void processElement2(StreamRecord<IN2> element) throws Exception {
+		window.addToBuffer2(element.getValue());
 	}
 
-	@Override
 	@SuppressWarnings("unchecked")
 	protected void callUserFunction() throws Exception {
 
 		List<IN1> first = new ArrayList<IN1>();
 		List<IN2> second = new ArrayList<IN2>();
 
+		// TODO: Give operators a way to copy elements
+
 		for (IN1 element : window.circularList1.getElements()) {
-			first.add(serializer1.copy(element));
+			first.add(element);
 		}
 		for (IN2 element : window.circularList2.getElements()) {
-			second.add(serializer2.copy(element));
+			second.add(element);
 		}
 
+		TimestampedCollector<OUT> timestampedCollector = new TimestampedCollector<OUT>(output);
+		timestampedCollector.setTimestamp(System.currentTimeMillis());
 		if (!window.circularList1.isEmpty() || !window.circularList2.isEmpty()) {
-			((CoWindowFunction<IN1, IN2, OUT>) userFunction).coWindow(first, second, collector);
+			userFunction.coWindow(first, second, timestampedCollector);
+		}
+	}
+
+	@Override
+	public void processWatermark1(Watermark mark) throws Exception {
+		input1Watermark = mark.getTimestamp();
+		long newMin = Math.min(input1Watermark, input2Watermark);
+		if (newMin > combinedWatermark && input1Watermark != Long.MAX_VALUE && input2Watermark != Long.MAX_VALUE) {
+			combinedWatermark = newMin;
+			output.emitWatermark(new Watermark(combinedWatermark));
+		}
+	}
+
+	@Override
+	public void processWatermark2(Watermark mark) throws Exception {
+		input2Watermark = mark.getTimestamp();
+		long newMin = Math.min(input1Watermark, input2Watermark);
+		if (newMin > combinedWatermark && input1Watermark != Long.MAX_VALUE && input2Watermark != Long.MAX_VALUE) {
+			combinedWatermark = newMin;
+			output.emitWatermark(new Watermark(combinedWatermark));
 		}
 	}
 
@@ -120,7 +156,7 @@ public class CoStreamWindow<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OU
 			}
 		}
 
-		protected synchronized void checkWindowEnd(long timeStamp) {
+		protected synchronized void checkWindowEnd(long timeStamp) throws Exception{
 			nextRecordTime = timeStamp;
 
 			while (miniBatchEnd()) {
@@ -128,7 +164,7 @@ public class CoStreamWindow<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OU
 				circularList2.newSlide();
 				minibatchCounter++;
 				if (windowEnd()) {
-					callUserFunctionAndLogException();
+					callUserFunction();
 					circularList1.shiftWindow(batchPerSlide);
 					circularList2.shiftWindow(batchPerSlide);
 				}
@@ -152,9 +188,9 @@ public class CoStreamWindow<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OU
 			return false;
 		}
 
-		public void reduceLastBatch() {
+		public void reduceLastBatch() throws Exception{
 			if (!miniBatchEnd()) {
-				callUserFunctionAndLogException();
+				callUserFunction();
 			}
 		}
 
@@ -174,19 +210,15 @@ public class CoStreamWindow<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OU
 	}
 
 	@Override
-	public void close() {
+	public void close() throws Exception {
 		if (!window.miniBatchEnd()) {
-			callUserFunctionAndLogException();
+			try {
+				callUserFunction();
+			} catch (Exception e) {
+				throw new RuntimeException("Could not call user function in CoStreamWindow.close()", e);
+			}
 		}
 		super.close();
-	}
-
-	@Override
-	protected void callUserFunction1() throws Exception {
-	}
-
-	@Override
-	protected void callUserFunction2() throws Exception {
 	}
 
 	public void setSlideSize(long slideSize) {

@@ -18,15 +18,6 @@
 
 package org.apache.flink.runtime.iterative.task;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
-import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.operators.util.JoinHashMap;
 import org.apache.flink.api.common.typeutils.TypeComparator;
@@ -35,7 +26,10 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.MemorySegment;
+import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.io.disk.InputViewIterator;
+import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
+import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.iterative.concurrent.BlockingBackChannel;
 import org.apache.flink.runtime.iterative.concurrent.BlockingBackChannelBroker;
 import org.apache.flink.runtime.iterative.concurrent.Broker;
@@ -56,6 +50,12 @@ import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.types.Value;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.MutableObjectIterator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The head is responsible for coordinating an iteration and can run a
@@ -112,8 +112,9 @@ public class IterationHeadPactTask<X, Y, S extends Function, OT> extends Abstrac
 		List<RecordWriter<?>> finalOutputWriters = new ArrayList<RecordWriter<?>>();
 		final TaskConfig finalOutConfig = this.config.getIterationHeadFinalOutputConfig();
 		final ClassLoader userCodeClassLoader = getUserCodeClassLoader();
+		AccumulatorRegistry.Reporter reporter = getEnvironment().getAccumulatorRegistry().getReadWriteReporter();
 		this.finalOutputCollector = RegularPactTask.getOutputCollector(this, finalOutConfig,
-			userCodeClassLoader, finalOutputWriters, config.getNumOutputs(), finalOutConfig.getNumOutputs());
+			userCodeClassLoader, finalOutputWriters, config.getNumOutputs(), finalOutConfig.getNumOutputs(), reporter);
 
 		// sanity check the setup
 		final int writersIntoStepFunction = this.eventualOutputs.size();

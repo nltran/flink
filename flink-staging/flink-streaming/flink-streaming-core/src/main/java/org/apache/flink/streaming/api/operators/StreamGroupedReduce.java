@@ -22,8 +22,10 @@ import java.util.Map;
 
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 public class StreamGroupedReduce<IN> extends StreamReduce<IN> {
+
 	private static final long serialVersionUID = 1L;
 
 	private KeySelector<IN, ?> keySelector;
@@ -36,17 +38,17 @@ public class StreamGroupedReduce<IN> extends StreamReduce<IN> {
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	protected void callUserFunction() throws Exception {
-		Object key = keySelector.getKey(nextObject);
+	public void processElement(StreamRecord<IN> element) throws Exception {
+		Object key = keySelector.getKey(element.getValue());
 		IN currentValue = values.get(key);
 		if (currentValue != null) {
-			IN reduced = ((ReduceFunction<IN>) userFunction).reduce(copy(currentValue), nextObject);
+			// TODO: find a way to let operators copy elements (maybe)
+			IN reduced = userFunction.reduce(currentValue, element.getValue());
 			values.put(key, reduced);
-			collector.collect(reduced);
+			output.collect(element.replace(reduced));
 		} else {
-			values.put(key, nextObject);
-			collector.collect(nextObject);
+			values.put(key, element.getValue());
+			output.collect(element.replace(element.getValue()));
 		}
 	}
 

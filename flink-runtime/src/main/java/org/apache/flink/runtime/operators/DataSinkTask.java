@@ -26,6 +26,7 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.TypeSerializerFactory;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.api.reader.MutableReader;
 import org.apache.flink.runtime.io.network.api.reader.MutableRecordReader;
@@ -108,7 +109,7 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 			LOG.debug(getLogString("Starting data sink operator"));
 		}
 
-		ExecutionConfig executionConfig = new ExecutionConfig();
+		ExecutionConfig executionConfig;
 		try {
 			ExecutionConfig c = (ExecutionConfig) InstantiationUtil.readObjectFromConfig(
 					getJobConfiguration(),
@@ -116,6 +117,9 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 					getUserCodeClassLoader());
 			if (c != null) {
 				executionConfig = c;
+			} else {
+				LOG.warn("The execution config returned by the configuration was null");
+				executionConfig = new ExecutionConfig();
 			}
 		} catch (IOException e) {
 			throw new RuntimeException("Could not load ExecutionConfig from Job Configuration: " + e);
@@ -240,7 +244,7 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 				}
 				catch (Throwable t) {
 					if (LOG.isWarnEnabled()) {
-						LOG.warn(getLogString("Error closing the ouput format."), t);
+						LOG.warn(getLogString("Error closing the output format"), t);
 					}
 				}
 			}
@@ -352,6 +356,11 @@ public class DataSinkTask<IT> extends AbstractInvokable {
 		} else {
 			throw new Exception("Illegal input group size in task configuration: " + groupSize);
 		}
+
+		final AccumulatorRegistry accumulatorRegistry = getEnvironment().getAccumulatorRegistry();
+		final AccumulatorRegistry.Reporter reporter = accumulatorRegistry.getReadWriteReporter();
+
+		inputReader.setReporter(reporter);
 
 		this.inputTypeSerializerFactory = this.config.getInputSerializer(0, getUserCodeClassLoader());
 		@SuppressWarnings({ "rawtypes" })

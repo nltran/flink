@@ -21,39 +21,48 @@ package org.apache.flink.ml.preprocessing
 import breeze.linalg
 import breeze.numerics.sqrt
 import breeze.numerics.sqrt._
-import org.apache.flink.api.common.functions._
+import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.scala._
-import org.apache.flink.configuration.Configuration
-import org.apache.flink.ml.common.{Parameter, ParameterMap, Transformer}
+import org.apache.flink.ml.common.{LabeledVector, Parameter, ParameterMap}
 import org.apache.flink.ml.math.Breeze._
-import org.apache.flink.ml.math.Vector
+import org.apache.flink.ml.math.{BreezeVectorConverter, Vector}
+import org.apache.flink.ml.pipeline.{TransformOperation, FitOperation,
+Transformer}
 import org.apache.flink.ml.preprocessing.StandardScaler.{Mean, Std}
+
+import scala.reflect.ClassTag
 
 /** Scales observations, so that all features have a user-specified mean and standard deviation.
   * By default for [[StandardScaler]] transformer mean=0.0 and std=1.0.
   *
-  * This transformer takes a [[Vector]] of values and maps it to a
-  * scaled [[Vector]] such that each feature has a user-specified mean and standard deviation.
+  * This transformer takes a subtype of  [[Vector]] of values and maps it to a
+  * scaled subtype of [[Vector]] such that each feature has a user-specified mean and standard
+  * deviation.
   *
   * This transformer can be prepended to all [[Transformer]] and
-  * [[org.apache.flink.ml.common.Learner]] implementations which expect an input of
-  * [[Vector]].
+  * [[org.apache.flink.ml.pipeline.Predictor]] implementations which expect as input a subtype
+  * of [[Vector]].
   *
   * @example
   *          {{{
   *            val trainingDS: DataSet[Vector] = env.fromCollection(data)
   *            val transformer = StandardScaler().setMean(10.0).setStd(2.0)
   *
-  *            transformer.transform(trainingDS)
+  *            transformer.fit(trainingDS)
+  *            val transformedDS = transformer.transform(trainingDS)
   *          }}}
   *
   * =Parameters=
   *
-  * - [[StandardScaler.Mean]]: The mean value of transformed data set; by default equal to 0
-  * - [[StandardScaler.Std]]: The standard deviation of the transformed data set; by default
+  * - [[Mean]]: The mean value of transformed data set; by default equal to 0
+  * - [[Std]]: The standard deviation of the transformed data set; by default
   * equal to 1
   */
-class StandardScaler extends Transformer[Vector, Vector] with Serializable {
+class StandardScaler extends Transformer[StandardScaler] {
+
+  private[preprocessing] var metricsOption: Option[
+      DataSet[(linalg.Vector[Double], linalg.Vector[Double])]
+    ] = None
 
   /** Sets the target mean of the transformed data
     *
@@ -78,36 +87,62 @@ class StandardScaler extends Transformer[Vector, Vector] with Serializable {
     parameters.add(Std, std)
     this
   }
+}
 
-  override def transform(input: DataSet[Vector], parameters: ParameterMap):
-  DataSet[Vector] = {
-    val resultingParameters = this.parameters ++ parameters
-    val mean = resultingParameters(Mean)
-    val std = resultingParameters(Std)
+object StandardScaler {
 
-    val featureMetrics = extractFeatureMetrics(input)
+  // ====================================== Parameters =============================================
 
-    input.map(new RichMapFunction[Vector, Vector]() {
+  case object Mean extends Parameter[Double] {
+    override val defaultValue: Option[Double] = Some(0.0)
+  }
 
-      var broadcastMean: linalg.Vector[Double] = null
-      var broadcastStd: linalg.Vector[Double] = null
+  case object Std extends Parameter[Double] {
+    override val defaultValue: Option[Double] = Some(1.0)
+  }
 
-      override def open(parameters: Configuration): Unit = {
-        val broadcastedMetrics = getRuntimeContext().getBroadcastVariable[(linalg.Vector[Double],
-          linalg.Vector[Double])]("broadcastedMetrics").get(0)
-        broadcastMean = broadcastedMetrics._1
-        broadcastStd = broadcastedMetrics._2
+  // ==================================== Factory methods ==========================================
+
+  def apply(): StandardScaler = {
+    new StandardScaler()
+  }
+
+  // ====================================== Operations =============================================
+
+  /** Trains the [[org.apache.flink.ml.preprocessing.StandardScaler]] by learning the mean and
+    * standard deviation of the training data. These values are used inthe transform step
+    * to transform the given input data.
+    *
+    * @tparam T Input data type which is a subtype of [[Vector]]
+    * @return
+    */
+  implicit def fitVectorStandardScaler[T <: Vector] = new FitOperation[StandardScaler, T] {
+    override def fit(instance: StandardScaler, fitParameters: ParameterMap, input: DataSet[T])
+      : Unit = {
+      val metrics = extractFeatureMetrics(input)
+
+      instance.metricsOption = Some(metrics)
+    }
+  }
+
+  /** Trains the [[StandardScaler]] by learning the mean and standard deviation of the training
+    * data which is of type [[LabeledVector]]. The mean and standard deviation are used to
+    * transform the given input data.
+    *
+    */
+  implicit val fitLabeledVectorStandardScaler = {
+    new FitOperation[StandardScaler, LabeledVector] {
+      override def fit(
+          instance: StandardScaler,
+          fitParameters: ParameterMap,
+          input: DataSet[LabeledVector])
+        : Unit = {
+        val vectorDS = input.map(_.vector)
+        val metrics = extractFeatureMetrics(vectorDS)
+
+        instance.metricsOption = Some(metrics)
       }
-
-      override def map(vector: Vector): Vector = {
-        var myVector = vector.asBreeze
-
-        myVector -= broadcastMean
-        myVector :/= broadcastStd
-        myVector = (myVector :* std) + mean
-        return myVector.fromBreeze
-      }
-    }).withBroadcastSet(featureMetrics, "broadcastedMetrics")
+    }
   }
 
   /** Calculates in one pass over the data the features' mean and standard deviation.
@@ -121,7 +156,7 @@ class StandardScaler extends Transformer[Vector, Vector] with Serializable {
     *          The first vector represents the mean vector and the second is the standard
     *          deviation vector.
     */
-  private def extractFeatureMetrics(dataSet: DataSet[Vector])
+  private def extractFeatureMetrics[T <: Vector](dataSet: DataSet[T])
   : DataSet[(linalg.Vector[Double], linalg.Vector[Double])] = {
     val metrics = dataSet.map{
       v => (1.0, v.asBreeze, linalg.Vector.zeros[Double](v.size))
@@ -148,25 +183,124 @@ class StandardScaler extends Transformer[Vector, Vector] with Serializable {
             varianceVector.update(i, 1.0)
           }
         }
-
         (metric._2 / metric._1, varianceVector)
       }
     }
     metrics
   }
-}
 
-object StandardScaler {
+  /** Base class for StandardScaler's [[TransformOperation]]. This class has to be extended for
+    * all types which are supported by [[StandardScaler]]'s transform operation.
+    *
+    * @tparam T
+    */
+  abstract class StandardScalerTransformOperation[T: TypeInformation: ClassTag]
+    extends TransformOperation[
+        StandardScaler,
+        (linalg.Vector[Double], linalg.Vector[Double]),
+        T,
+        T] {
 
-  case object Mean extends Parameter[Double] {
-    override val defaultValue: Option[Double] = Some(0.0)
+    var mean: Double = _
+    var std: Double = _
+
+    override def getModel(
+      instance: StandardScaler,
+      transformParameters: ParameterMap)
+    : DataSet[(linalg.Vector[Double], linalg.Vector[Double])] = {
+      mean = transformParameters(Mean)
+      std = transformParameters(Std)
+
+      instance.metricsOption match {
+        case Some(metrics) => metrics
+        case None =>
+          throw new RuntimeException("The StandardScaler has not been fitted to the data. " +
+            "This is necessary to estimate the mean and standard deviation of the data.")
+      }
+    }
+
+    def scale[V <: Vector: BreezeVectorConverter](
+      vector: V,
+      model: (linalg.Vector[Double], linalg.Vector[Double]))
+    : V = {
+      val (broadcastMean, broadcastStd) = model
+      var myVector = vector.asBreeze
+      myVector -= broadcastMean
+      myVector :/= broadcastStd
+      myVector = (myVector :* std) + mean
+      myVector.fromBreeze
+    }
   }
 
-  case object Std extends Parameter[Double] {
-    override val defaultValue: Option[Double] = Some(1.0)
+  /** [[TransformOperation]] to transform [[Vector]] types
+    *
+    * @tparam T
+    * @return
+    */
+  implicit def transformVectors[T <: Vector: BreezeVectorConverter: TypeInformation: ClassTag] = {
+    new StandardScalerTransformOperation[T]() {
+      override def transform(
+            vector: T,
+            model: (linalg.Vector[Double], linalg.Vector[Double]))
+        : T = {
+        scale(vector, model)
+      }
+    }
   }
 
-  def apply(): StandardScaler = {
-    new StandardScaler()
+  /** [[TransformOperation]] to transform tuples of type ([[Vector]], [[Double]]).
+    *
+    * @tparam T
+    * @return
+    */
+  implicit def transformTupleVectorDouble[
+      T <: Vector: BreezeVectorConverter: TypeInformation: ClassTag] = {
+    new StandardScalerTransformOperation[(T, Double)] {
+      override def transform(
+          element: (T, Double),
+          model: (linalg.Vector[Double], linalg.Vector[Double]))
+        : (T, Double) = {
+        (scale(element._1, model), element._2)
+      }
+    }
+  }
+
+  /** [[TransformOperation]] to transform [[LabeledVector]].
+    *
+    */
+  implicit val transformLabeledVector = new StandardScalerTransformOperation[LabeledVector] {
+    override def transform(
+        element: LabeledVector,
+        model: (linalg.Vector[Double], linalg.Vector[Double]))
+      : LabeledVector = {
+      val LabeledVector(label, vector) = element
+
+      LabeledVector(label, scale(vector, model))
+    }
+  }
+
+  /** Scales the given vector such that it has the given mean and std
+    *
+    * @param vector Vector to be scaled
+    * @param dataMean Mean of the training data
+    * @param dataStd Standard deviation of the training data
+    * @param mean Mean of the scaled data
+    * @param std Standard deviation of the scaled data
+    * @tparam T Type of [[Vector]]
+    * @return Scaled vector
+    */
+  private def scaleVector[T <: Vector: BreezeVectorConverter](
+      vector: T,
+      dataMean: linalg.Vector[Double],
+      dataStd: linalg.Vector[Double],
+      mean: Double,
+      std: Double)
+    : T = {
+    var myVector = vector.asBreeze
+
+    myVector -= dataMean
+    myVector :/= dataStd
+    myVector = (myVector :* std) + mean
+    myVector.fromBreeze
   }
 }

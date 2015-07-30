@@ -60,7 +60,7 @@ public class JSONGenerator {
 			Map<Integer, Integer> edgeRemapings) throws JSONException {
 
 		Integer vertexID = toVisit.get(0);
-		StreamNode vertex = streamGraph.getVertex(vertexID);
+		StreamNode vertex = streamGraph.getStreamNode(vertexID);
 
 		if (streamGraph.getSourceIDs().contains(vertexID)
 				|| Collections.disjoint(vertex.getInEdges(), toVisit)) {
@@ -73,7 +73,7 @@ public class JSONGenerator {
 				node.put(PREDECESSORS, inputs);
 
 				for (StreamEdge inEdge : vertex.getInEdges()) {
-					int inputID = inEdge.getSourceID();
+					int inputID = inEdge.getSourceId();
 
 					Integer mappedID = (edgeRemapings.keySet().contains(inputID)) ? edgeRemapings
 							.get(inputID) : inputID;
@@ -85,7 +85,7 @@ public class JSONGenerator {
 		} else {
 			Integer iterationHead = -1;
 			for (StreamEdge inEdge : vertex.getInEdges()) {
-				int operator = inEdge.getSourceID();
+				int operator = inEdge.getSourceId();
 
 				if (streamGraph.vertexIDtoLoop.containsKey(operator)) {
 					iterationHead = operator;
@@ -97,7 +97,7 @@ public class JSONGenerator {
 			obj.put(STEPS, iterationSteps);
 			obj.put(ID, iterationHead);
 			obj.put(PACT, "IterativeDataStream");
-			obj.put(PARALLELISM, streamGraph.getVertex(iterationHead).getParallelism());
+			obj.put(PARALLELISM, streamGraph.getStreamNode(iterationHead).getParallelism());
 			obj.put(CONTENTS, "Stream Iteration");
 			JSONArray iterationInputs = new JSONArray();
 			obj.put(PREDECESSORS, iterationInputs);
@@ -115,7 +115,7 @@ public class JSONGenerator {
 			Map<Integer, Integer> edgeRemapings, JSONArray iterationInEdges) throws JSONException {
 
 		Integer vertexID = toVisit.get(0);
-		StreamNode vertex = streamGraph.getVertex(vertexID);
+		StreamNode vertex = streamGraph.getStreamNode(vertexID);
 		toVisit.remove(vertexID);
 
 		// Ignoring head and tail to avoid redundancy
@@ -127,7 +127,7 @@ public class JSONGenerator {
 			obj.put(PREDECESSORS, inEdges);
 
 			for (StreamEdge inEdge : vertex.getInEdges()) {
-				int inputID = inEdge.getSourceID();
+				int inputID = inEdge.getSourceId();
 
 				if (edgeRemapings.keySet().contains(inputID)) {
 					decorateEdge(inEdges, vertexID, inputID, inputID);
@@ -147,14 +147,14 @@ public class JSONGenerator {
 		JSONObject input = new JSONObject();
 		inputArray.put(input);
 		input.put(ID, mappedInputID);
-		input.put(SHIP_STRATEGY, streamGraph.getEdge(inputID, vertexID).getPartitioner()
+		input.put(SHIP_STRATEGY, streamGraph.getStreamEdge(inputID, vertexID).getPartitioner()
 				.getStrategy());
 		input.put(SIDE, (inputArray.length() == 0) ? "first" : "second");
 	}
 
 	private void decorateNode(Integer vertexID, JSONObject node) throws JSONException {
 
-		StreamNode vertex = streamGraph.getVertex(vertexID);
+		StreamNode vertex = streamGraph.getStreamNode(vertexID);
 
 		node.put(ID, vertexID);
 		node.put(TYPE, vertex.getOperatorName());
@@ -165,16 +165,11 @@ public class JSONGenerator {
 			node.put(PACT, "Data Stream");
 		}
 
-		StreamOperator<?, ?> operator = streamGraph.getVertex(vertexID).getOperator();
+		StreamOperator<?> operator = streamGraph.getStreamNode(vertexID).getOperator();
 
-		if (operator != null && operator.getUserFunction() != null) {
-			node.put(CONTENTS, vertex.getOperatorName() + " at "
-					+ operator.getUserFunction().getClass().getSimpleName());
-		} else {
-			node.put(CONTENTS, vertex.getOperatorName());
-		}
+		node.put(CONTENTS, vertex.getOperatorName());
 
-		node.put(PARALLELISM, streamGraph.getVertex(vertexID).getParallelism());
+		node.put(PARALLELISM, streamGraph.getStreamNode(vertexID).getParallelism());
 	}
 
 }

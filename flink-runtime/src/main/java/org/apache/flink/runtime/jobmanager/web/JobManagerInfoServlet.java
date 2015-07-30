@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -35,6 +36,7 @@ import akka.actor.ActorRef;
 
 import akka.pattern.Patterns;
 import akka.util.Timeout;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.runtime.accumulators.StringifiedAccumulatorResult;
 import org.apache.flink.runtime.instance.InstanceConnectionInfo;
 import org.apache.flink.runtime.messages.ArchiveMessages.ArchivedJobs;
@@ -64,6 +66,7 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.StringUtils;
 import org.eclipse.jetty.io.EofException;
 
+import scala.Tuple3;
 import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.FiniteDuration;
@@ -115,6 +118,20 @@ public class JobManagerInfoServlet extends HttpServlet {
 					writeJsonForArchive(resp.getWriter(), archivedJobs);
 				}
 			}
+			else if("jobcounts".equals(req.getParameter("get"))) {
+				response = Patterns.ask(archive, ArchiveMessages.getRequestJobCounts(),
+						new Timeout(timeout));
+
+				result = Await.result(response, timeout);
+
+				if(!(result instanceof Tuple3)) {
+					throw new RuntimeException("RequestJobCounts requires a response of type " +
+							"Tuple3. Instead the response is of type " + result.getClass() +
+							".");
+				} else {
+					writeJsonForJobCounts(resp.getWriter(), (Tuple3)result);
+				}
+			}
 			else if("job".equals(req.getParameter("get"))) {
 				String jobId = req.getParameter("job");
 
@@ -139,7 +156,12 @@ public class JobManagerInfoServlet extends HttpServlet {
 			}
 			else if("groupvertex".equals(req.getParameter("get"))) {
 				String jobId = req.getParameter("job");
-				String groupvertexId = req.getParameter("groupvertex");
+				String groupVertexId = req.getParameter("groupvertex");
+
+				// No group vertex specified
+				if (groupVertexId.equals("null")) {
+					return;
+				}
 
 				response = Patterns.ask(archive, new RequestJob(JobID.fromHexString(jobId)),
 						new Timeout(timeout));
@@ -152,11 +174,11 @@ public class JobManagerInfoServlet extends HttpServlet {
 				}else {
 					final JobResponse jobResponse = (JobResponse) result;
 
-					if(jobResponse instanceof JobFound && groupvertexId != null){
+					if(jobResponse instanceof JobFound && groupVertexId != null){
 						ExecutionGraph archivedJob = ((JobFound)jobResponse).executionGraph();
 
 						writeJsonForArchivedJobGroupvertex(resp.getWriter(), archivedJob,
-								JobVertexID.fromHexString(groupvertexId));
+								JobVertexID.fromHexString(groupVertexId));
 					} else {
 						LOG.warn("DoGet:groupvertex: Could not find job for job ID " + jobId);
 					}
@@ -339,6 +361,22 @@ public class JobManagerInfoServlet extends HttpServlet {
 	}
 
 	/**
+	 * Writes Json with the job counts
+	 *
+	 * @param wrt
+	 * @param jobCounts
+	 */
+	private void writeJsonForJobCounts(PrintWriter wrt, Tuple3<Integer, Integer, Integer> jobCounts) {
+
+		wrt.write("{");
+		wrt.write("\"finished\": " + jobCounts._1() + ",");
+		wrt.write("\"canceled\": " + jobCounts._2() + ",");
+		wrt.write("\"failed\": "   + jobCounts._3());
+		wrt.write("}");
+
+	}
+
+	/**
 	 * Writes infos about archived job in Json format, including groupvertices and groupverticetimes
 	 *
 	 * @param wrt
@@ -397,6 +435,40 @@ public class JobManagerInfoServlet extends HttpServlet {
 
 			}
 			wrt.write("],");
+
+			// write user config
+			ExecutionConfig ec = graph.getExecutionConfig();
+			if(ec != null) {
+				wrt.write("\"executionConfig\": {");
+				wrt.write("\"Execution Mode\": \""+ec.getExecutionMode()+"\",");
+				wrt.write("\"Number of execution retries\": \""+ec.getNumberOfExecutionRetries()+"\",");
+				wrt.write("\"Job parallelism\": \""+ec.getParallelism()+"\",");
+				wrt.write("\"Object reuse mode\": \""+ec.isObjectReuseEnabled()+"\"");
+				ExecutionConfig.GlobalJobParameters uc = ec.getGlobalJobParameters();
+				if(uc != null) {
+					Map<String, String> ucVals = uc.toMap();
+					if (ucVals != null) {
+						String ucString = "{";
+						int i = 0;
+						for (Map.Entry<String, String> ucVal : ucVals.entrySet()) {
+							ucString += "\"" + ucVal.getKey() + "\":\"" + ucVal.getValue() + "\"";
+							if (++i < ucVals.size()) {
+								ucString += ",\n";
+							}
+						}
+						wrt.write(", \"userConfig\": " + ucString + "}");
+					}
+					else {
+						LOG.debug("GlobalJobParameters.toMap() did not return anything");
+					}
+				}
+				else {
+					LOG.debug("No GlobalJobParameters were set in the execution config");
+				}
+				wrt.write("},");
+			} else {
+				LOG.warn("Unable to retrieve execution config from execution graph");
+			}
 
 			// write accumulators
 			final Future<Object> response = Patterns.ask(jobmanager,

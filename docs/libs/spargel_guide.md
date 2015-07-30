@@ -1,5 +1,5 @@
 ---
-title: "Spargel Graph Processing API"
+title: "Spargel Graph Processing API - DEPRECATED"
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -20,7 +20,7 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-Spargel is our [Giraph](http://giraph.apache.org) like **graph processing** Java API. It supports basic graph computations, which are run as a sequence of [supersteps](iterations.html#supersteps). Spargel and Giraph both implement the [Bulk Synchronous Parallel (BSP)](https://en.wikipedia.org/wiki/Bulk_Synchronous_Parallel) programming model, propsed by Google's [Pregel](http://googleresearch.blogspot.de/2009/06/large-scale-graph-computing-at-google.html).
+Spargel is our [Giraph](http://giraph.apache.org) like **graph processing** Java API. It supports basic graph computations, which are run as a sequence of [supersteps]({{site.baseurl}}/apis/iterations.html#supersteps). Spargel and Giraph both implement the [Bulk Synchronous Parallel (BSP)](https://en.wikipedia.org/wiki/Bulk_Synchronous_Parallel) programming model, propsed by Google's [Pregel](http://googleresearch.blogspot.de/2009/06/large-scale-graph-computing-at-google.html).
 
 The API provides a **vertex-centric** view on graph processing with two basic operations per superstep:
 
@@ -32,8 +32,10 @@ This vertex-centric view makes it easy to express a large class of graph problem
 * This will be replaced by the TOC
 {:toc}
 
-Spargel API
+Spargel API - DEPRECATED
 -----------
+The Spargel API is Deprecated. Please check out the new [Gelly API](gelly_guide.html) for graph processing with Apache Flink. If you want to port your Spargel code into Gelly,
+please check the [migration guide](gelly_guide.html#migrating-spargel-code-to-gelly).
 
 The Spargel API is part of the *addons* Maven project. All relevant classes are located in the *org.apache.flink.spargel.java* package.
 

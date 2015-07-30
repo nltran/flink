@@ -18,9 +18,6 @@
 
 package org.apache.flink.api.java;
 
-import com.esotericsoftware.kryo.Serializer;
-import com.google.common.base.Joiner;
-import org.apache.commons.lang3.Validate;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.InvalidProgramException;
 import org.apache.flink.api.common.JobExecutionResult;
@@ -64,7 +61,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -72,6 +68,9 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
+import com.esotericsoftware.kryo.Serializer;
+import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 
 /**
  * The ExecutionEnviroment is the context in which a program is executed. A
@@ -112,7 +111,13 @@ public abstract class ExecutionEnvironment {
 	
 	private final List<Tuple2<String, DistributedCacheEntry>> cacheFile = new ArrayList<Tuple2<String, DistributedCacheEntry>>();
 
-	private ExecutionConfig config = new ExecutionConfig();
+	private final ExecutionConfig config = new ExecutionConfig();
+
+	/** Result from the latest execution, to be make it retrievable when using eager execution methods */
+	protected JobExecutionResult lastJobExecutionResult;
+	
+	/** Flag to indicate whether sinks have been cleared in previous executions */
+	private boolean wasExecuted = false;
 
 	// --------------------------------------------------------------------------------------------
 	//  Constructor and Properties
@@ -237,7 +242,17 @@ public abstract class ExecutionEnvironment {
 	public UUID getId() {
 		return this.executionId;
 	}
-	
+
+	/**
+	 * Returns the {@link org.apache.flink.api.common.JobExecutionResult} of the last executed job.
+	 * 
+	 * @return The execution result from the latest job execution.
+	 */
+	public JobExecutionResult getLastJobExecutionResult(){
+		return this.lastJobExecutionResult;
+	}
+
+
 	/**
 	 * Gets the UUID by which this environment is identified, as a string.
 	 * 
@@ -335,7 +350,7 @@ public abstract class ExecutionEnvironment {
 	 * @return A DataSet that represents the data read from the given file as text lines.
 	 */
 	public DataSource<String> readTextFile(String filePath) {
-		Validate.notNull(filePath, "The file path may not be null.");
+		Preconditions.checkNotNull(filePath, "The file path may not be null.");
 		
 		return new DataSource<String>(this, new TextInputFormat(new Path(filePath)), BasicTypeInfo.STRING_TYPE_INFO, Utils.getCallLocationName());
 	}
@@ -349,7 +364,7 @@ public abstract class ExecutionEnvironment {
 	 * @return A DataSet that represents the data read from the given file as text lines.
 	 */
 	public DataSource<String> readTextFile(String filePath, String charsetName) {
-		Validate.notNull(filePath, "The file path may not be null.");
+		Preconditions.checkNotNull(filePath, "The file path may not be null.");
 
 		TextInputFormat format = new TextInputFormat(new Path(filePath));
 		format.setCharsetName(charsetName);
@@ -370,7 +385,7 @@ public abstract class ExecutionEnvironment {
 	 * @return A DataSet that represents the data read from the given file as text lines.
 	 */
 	public DataSource<StringValue> readTextFileWithValue(String filePath) {
-		Validate.notNull(filePath, "The file path may not be null.");
+		Preconditions.checkNotNull(filePath, "The file path may not be null.");
 		
 		return new DataSource<StringValue>(this, new TextValueInputFormat(new Path(filePath)), new ValueTypeInfo<StringValue>(StringValue.class), Utils.getCallLocationName());
 	}
@@ -390,7 +405,7 @@ public abstract class ExecutionEnvironment {
 	 * @return A DataSet that represents the data read from the given file as text lines.
 	 */
 	public DataSource<StringValue> readTextFileWithValue(String filePath, String charsetName, boolean skipInvalidLines) {
-		Validate.notNull(filePath, "The file path may not be null.");
+		Preconditions.checkNotNull(filePath, "The file path may not be null.");
 		
 		TextValueInputFormat format = new TextValueInputFormat(new Path(filePath));
 		format.setCharsetName(charsetName);
@@ -410,7 +425,7 @@ public abstract class ExecutionEnvironment {
 	 * @return A DataSet that represents the data read from the given file as primitive type.
 	 */
 	public <X> DataSource<X> readFileOfPrimitives(String filePath, Class<X> typeClass) {
-		Validate.notNull(filePath, "The file path may not be null.");
+		Preconditions.checkNotNull(filePath, "The file path may not be null.");
 
 		return new DataSource<X>(this, new PrimitiveInputFormat<X>(new Path(filePath), typeClass), TypeExtractor.getForClass(typeClass), Utils.getCallLocationName());
 	}
@@ -426,7 +441,7 @@ public abstract class ExecutionEnvironment {
 	 * @return A DataSet that represents the data read from the given file as primitive type.
 	 */
 	public <X> DataSource<X> readFileOfPrimitives(String filePath, String delimiter, Class<X> typeClass) {
-		Validate.notNull(filePath, "The file path may not be null.");
+		Preconditions.checkNotNull(filePath, "The file path may not be null.");
 
 		return new DataSource<X>(this, new PrimitiveInputFormat<X>(new Path(filePath), delimiter, typeClass), TypeExtractor.getForClass(typeClass), Utils.getCallLocationName());
 	}
@@ -590,9 +605,7 @@ public abstract class ExecutionEnvironment {
 	
 	/**
 	 * Creates a DataSet from the given non-empty collection. The type of the data set is that
-	 * of the elements in the collection. The elements need to be serializable (as defined by
-	 * {@link java.io.Serializable}), because the framework may move the elements into the cluster
-	 * if needed.
+	 * of the elements in the collection.
 	 * <p>
 	 * The framework will try and determine the exact type from the collection elements.
 	 * In case of generic elements, it may be necessary to manually supply the type information
@@ -622,13 +635,8 @@ public abstract class ExecutionEnvironment {
 	}
 	
 	/**
-	 * Creates a DataSet from the given non-empty collection. The type of the data set is that
-	 * of the elements in the collection. The elements need to be serializable (as defined by
-	 * {@link java.io.Serializable}), because the framework may move the elements into the cluster
-	 * if needed.
-	 * <p>
-	 * Note that this operation will result in a non-parallel data source, i.e. a data source with
-	 * a parallelism of one.
+	 * Creates a DataSet from the given non-empty collection. Note that this operation will result
+	 * in a non-parallel data source, i.e. a data source with a parallelism of one.
 	 * <p>
 	 * The returned DataSet is typed to the given TypeInformation.
 	 *  
@@ -644,7 +652,6 @@ public abstract class ExecutionEnvironment {
 	
 	private <X> DataSource<X> fromCollection(Collection<X> data, TypeInformation<X> type, String callLocationName) {
 		CollectionInputFormat.checkCollection(data, type.getTypeClass());
-		
 		return new DataSource<X>(this, new CollectionInputFormat<X>(data, type.createSerializer(config)), type, callLocationName);
 	}
 	
@@ -653,9 +660,6 @@ public abstract class ExecutionEnvironment {
 	 * the actual execution happens, the type of data returned by the iterator must be given
 	 * explicitly in the form of the type class (this is due to the fact that the Java compiler
 	 * erases the generic type information).
-	 * <p>
-	 * The iterator must be serializable (as defined in {@link java.io.Serializable}), because the
-	 * framework may move it to a remote environment, if needed.
 	 * <p>
 	 * Note that this operation will result in a non-parallel data source, i.e. a data source with
 	 * a parallelism of one.
@@ -677,9 +681,6 @@ public abstract class ExecutionEnvironment {
 	 * is generic. In that case, the type class (as given in {@link #fromCollection(Iterator, Class)}
 	 * does not supply all type information.
 	 * <p>
-	 * The iterator must be serializable (as defined in {@link java.io.Serializable}), because the
-	 * framework may move it to a remote environment, if needed.
-	 * <p>
 	 * Note that this operation will result in a non-parallel data source, i.e. a data source with
 	 * a parallelism of one.
 	 * 
@@ -690,10 +691,6 @@ public abstract class ExecutionEnvironment {
 	 * @see #fromCollection(Iterator, Class)
 	 */
 	public <X> DataSource<X> fromCollection(Iterator<X> data, TypeInformation<X> type) {
-		if (!(data instanceof Serializable)) {
-			throw new IllegalArgumentException("The iterator must be serializable.");
-		}
-		
 		return new DataSource<X>(this, new IteratorInputFormat<X>(data), type, Utils.getCallLocationName());
 	}
 	
@@ -701,8 +698,6 @@ public abstract class ExecutionEnvironment {
 	/**
 	 * Creates a new data set that contains the given elements. The elements must all be of the same type,
 	 * for example, all of the {@link String} or {@link Integer}. The sequence of elements must not be empty.
-	 * Furthermore, the elements must be serializable (as defined in {@link java.io.Serializable}, because the
-	 * execution environment may ship the elements into the cluster.
 	 * <p>
 	 * The framework will try and determine the exact type from the collection elements.
 	 * In case of generic elements, it may be necessary to manually supply the type information
@@ -729,8 +724,6 @@ public abstract class ExecutionEnvironment {
 	/**
 	 * Creates a new data set that contains elements in the iterator. The iterator is splittable, allowing the
 	 * framework to create a parallel data source that returns the elements in the iterator.
-	 * The iterator must be serializable (as defined in {@link java.io.Serializable}, because the
-	 * execution environment may ship the elements into the cluster.
 	 * <p>
 	 * Because the iterator will remain unmodified until the actual execution happens, the type of data
 	 * returned by the iterator must be given explicitly in the form of the type class (this is due to the
@@ -749,8 +742,6 @@ public abstract class ExecutionEnvironment {
 	/**
 	 * Creates a new data set that contains elements in the iterator. The iterator is splittable, allowing the
 	 * framework to create a parallel data source that returns the elements in the iterator.
-	 * The iterator must be serializable (as defined in {@link java.io.Serializable}, because the
-	 * execution environment may ship the elements into the cluster.
 	 * <p>
 	 * Because the iterator will remain unmodified until the actual execution happens, the type of data
 	 * returned by the iterator must be given explicitly in the form of the type information.
@@ -921,7 +912,15 @@ public abstract class ExecutionEnvironment {
 	 */
 	public JavaPlan createProgramPlan(String jobName, boolean clearSinks) {
 		if (this.sinks.isEmpty()) {
-			throw new RuntimeException("No data sinks have been created yet. A program needs at least one sink that consumes data. Examples are writing the data set or printing it.");
+			if (wasExecuted) {
+				throw new RuntimeException("No new data sinks have been defined since the " +
+						"last execution. The last execution refers to the latest call to " +
+						"'execute()', 'count()', 'collect()', or 'print()'.");
+			} else {
+				throw new RuntimeException("No data sinks have been created yet. " +
+						"A program needs at least one sink that consumes data. " +
+						"Examples are writing the data set or printing it.");
+			}
 		}
 		
 		if (jobName == null) {
@@ -969,6 +968,7 @@ public abstract class ExecutionEnvironment {
 		// clear all the sinks such that the next execution does not redo everything
 		if (clearSinks) {
 			this.sinks.clear();
+			wasExecuted = true;
 		}
 
 		// All types are registered now. Print information.
@@ -980,6 +980,16 @@ public abstract class ExecutionEnvironment {
 				config.getDefaultKryoSerializerClasses().size();
 		LOG.info("The job has {} registered types and {} default Kryo serializers", registeredTypes, defaultKryoSerializers);
 
+		if(config.isForceKryoEnabled() && config.isForceAvroEnabled()) {
+			LOG.warn("In the ExecutionConfig, both Avro and Kryo are enforced. Using Kryo serializer");
+		}
+		if(config.isForceKryoEnabled()) {
+			LOG.info("Using KryoSerializer for serializing POJOs");
+		}
+		if(config.isForceAvroEnabled()) {
+			LOG.info("Using AvroSerializer for serializing POJOs");
+		}
+
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("Registered Kryo types: {}", Joiner.on(',').join(config.getRegisteredKryoTypes()));
 			LOG.debug("Registered Kryo with Serializers types: {}", Joiner.on(',').join(config.getRegisteredTypesWithKryoSerializers()));
@@ -987,6 +997,9 @@ public abstract class ExecutionEnvironment {
 			LOG.debug("Registered Kryo default Serializers: {}", Joiner.on(',').join(config.getDefaultKryoSerializers()));
 			LOG.debug("Registered Kryo default Serializers Classes {}", Joiner.on(',').join(config.getDefaultKryoSerializerClasses()));
 			LOG.debug("Registered POJO types: {}", Joiner.on(',').join(config.getRegisteredPojoTypes()));
+
+			// print information about static code analysis
+			LOG.debug("Static code analysis mode: {}", config.getCodeAnalysisMode());
 		}
 
 		return plan;

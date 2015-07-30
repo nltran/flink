@@ -17,34 +17,35 @@
 
 package org.apache.flink.streaming.api.operators.windowing;
 
-import org.apache.flink.streaming.api.operators.ChainableStreamOperator;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.StreamWindow;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
  * This operator flattens the results of the window transformations by
  * outputing the elements of the {@link StreamWindow} one-by-one
  */
-public class WindowFlattener<T> extends ChainableStreamOperator<StreamWindow<T>, T> {
-
-	public WindowFlattener() {
-		super(null);
-		withoutInputCopy();
-	}
+public class WindowFlattener<T> extends AbstractStreamOperator<T>
+		implements OneInputStreamOperator<StreamWindow<T>, T> {
 
 	private static final long serialVersionUID = 1L;
 
+	public WindowFlattener() {
+		chainingStrategy = ChainingStrategy.FORCE_ALWAYS;
+		disableInputCopy();
+	}
+
 	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
+	public void processElement(StreamRecord<StreamWindow<T>> window) throws Exception {
+		for (T element : window.getValue()) {
+			output.collect(new StreamRecord<T>(element));
 		}
 	}
 
 	@Override
-	protected void callUserFunction() throws Exception {
-		for (T element : nextObject) {
-			collector.collect(element);
-		}
+	public void processWatermark(Watermark mark) throws Exception {
+		output.emitWatermark(mark);
 	}
-
 }

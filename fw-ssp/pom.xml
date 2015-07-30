@@ -23,13 +23,13 @@ under the License.
 	<parent>
 		<artifactId>flink-quickstart</artifactId>
 		<groupId>org.apache.flink</groupId>
-		<version>0.9-SNAPSHOT</version>
+		<version>0.10-SNAPSHOT</version>
 		<relativePath>../flink-quickstart</relativePath>
 	</parent>
 
 	<groupId>eu.enx</groupId>
 	<artifactId>fw-ssp2</artifactId>
-	<version>0.9-SNAPSHOT</version>
+	<version>0.10-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
 	<name>fw-ssp-paper01</name>

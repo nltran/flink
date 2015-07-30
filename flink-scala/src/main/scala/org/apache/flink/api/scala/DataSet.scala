@@ -17,29 +17,26 @@
  */
 package org.apache.flink.api.scala
 
-import org.apache.commons.lang3.Validate
-
 import org.apache.flink.api.common.InvalidProgramException
 import org.apache.flink.api.common.accumulators.SerializedListAccumulator
 import org.apache.flink.api.common.aggregators.Aggregator
 import org.apache.flink.api.common.functions._
 import org.apache.flink.api.common.io.{FileOutputFormat, OutputFormat}
 import org.apache.flink.api.common.operators.Order
+import org.apache.flink.api.common.operators.base.CrossOperatorBase.CrossHint
+import org.apache.flink.api.common.operators.base.JoinOperatorBase.JoinHint
 import org.apache.flink.api.common.operators.base.PartitionOperatorBase.PartitionMethod
-import org.apache.flink.api.common.typeutils.TypeSerializer
+import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.Utils.CountHelper
 import org.apache.flink.api.java.aggregation.Aggregations
 import org.apache.flink.api.java.functions.{FirstReducer, KeySelector}
 import org.apache.flink.api.java.io.{DiscardingOutputFormat, PrintingOutputFormat, TextOutputFormat}
-import org.apache.flink.api.common.operators.base.JoinOperatorBase.JoinHint
-import org.apache.flink.api.common.operators.base.CrossOperatorBase.CrossHint
 import org.apache.flink.api.java.operators.Keys.ExpressionKeys
 import org.apache.flink.api.java.operators._
-import org.apache.flink.api.java.{DataSet => JavaDataSet, SortPartitionOperator, Utils}
-import org.apache.flink.api.scala.operators.{ScalaCsvOutputFormat, ScalaAggregateOperator}
+import org.apache.flink.api.java.{DataSet => JavaDataSet, Utils}
+import org.apache.flink.api.scala.operators.{ScalaAggregateOperator, ScalaCsvOutputFormat}
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.core.fs.{FileSystem, Path}
-import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.util.{AbstractID, Collector}
 
 import scala.collection.JavaConverters._
@@ -86,12 +83,12 @@ import scala.reflect.ClassTag
  * @tparam T The type of the DataSet, i.e., the type of the elements of the DataSet.
  */
 class DataSet[T: ClassTag](set: JavaDataSet[T]) {
-  Validate.notNull(set, "Java DataSet must not be null.")
+  require(set != null, "Java DataSet must not be null.")
 
   /**
    * Returns the TypeInformation for the elements of this DataSet.
    */
-  def getType(): TypeInformation[T] = set.getType
+  def getType(): TypeInformation[T] = set.getType()
 
   /**
    * Returns the execution environment associated with the current DataSet.
@@ -713,10 +710,12 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
   // --------------------------------------------------------------------------------------------
   //  distinct
   // --------------------------------------------------------------------------------------------
-
   /**
    * Creates a new DataSet containing the distinct elements of this DataSet. The decision whether
    * two elements are distinct or not is made using the return value of the given function.
+   *
+   * @param fun The function which extracts the key values from the DataSet on which the
+   *            distinction of the DataSet is decided.
    */
   def distinct[K: TypeInformation](fun: T => K): DataSet[T] = {
     val keyExtractor = new KeySelector[T, K] {
@@ -731,10 +730,24 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
   }
 
   /**
-   * Creates a new DataSet containing the distinct elements of this DataSet. The decision whether
-   * two elements are distinct or not is made based on only the specified tuple fields.
+   * Returns a distinct set of this DataSet.
+   * 
+   * <p>If the input is a composite type (Tuple or Pojo type), distinct is performed on all fields
+   * and each field must be a key type.</p>
+   */
+  def distinct(): DataSet[T] = {
+    wrap(new DistinctOperator[T](javaSet, null, getCallLocationName()))
+  }
+
+  /**
+   * Returns a distinct set of a tuple DataSet using field position keys.
+   * 
+   * <p>The field position keys specify the fields of Tuples on which the decision is made if
+   * two Tuples are distinct or not.</p>
+   * 
+   * <p>Note: Field position keys can only be specified for Tuple DataSets.</p>
    *
-   * This only works on tuple DataSets.
+   * @param fields One or more field positions on which the distinction of the DataSet is decided.
    */
   def distinct(fields: Int*): DataSet[T] = {
     wrap(new DistinctOperator[T](
@@ -744,8 +757,20 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
   }
 
   /**
-   * Creates a new DataSet containing the distinct elements of this DataSet. The decision whether
-   * two elements are distinct or not is made based on only the specified fields.
+   * Returns a distinct set of this DataSet using expression keys.
+   * 
+   * <p>The field position keys specify the fields of Tuples or Pojos on which the decision is made
+   * if two elements are distinct or not.</p>
+   *
+   * <p>The field expression keys specify the fields of a
+   * [[org.apache.flink.api.common.typeutils.CompositeType]] (e.g., Tuple or Pojo type)
+   * on which the decision is made if two elements are distinct or not.
+   * In case of a [[org.apache.flink.api.common.typeinfo.AtomicType]], only the
+   * wildcard expression ("_") is valid.</p>
+   *
+   * @param firstField First field position on which the distinction of the DataSet is decided
+   * @param otherFields Zero or more field positions on which the distinction of the DataSet
+   *                    is decided
    */
   def distinct(firstField: String, otherFields: String*): DataSet[T] = {
     wrap(new DistinctOperator[T](
@@ -754,15 +779,6 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
       getCallLocationName()))
   }
 
-  /**
-   * Creates a new DataSet containing the distinct elements of this DataSet. The decision whether
-   * two elements are distinct or not is made based on all tuple fields.
-   *
-   * This only works if this DataSet contains Tuples.
-   */
-  def distinct: DataSet[T] = {
-    wrap(new DistinctOperator[T](javaSet, null, getCallLocationName()))
-  }
 
   // --------------------------------------------------------------------------------------------
   //  Keyed DataSet
@@ -1126,7 +1142,7 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
 //   * operators that are composed of multiple steps.
 //   */
 //  def runOperation[R: ClassTag](operation: CustomUnaryOperation[T, R]): DataSet[R] = {
-//    Validate.notNull(operation, "The custom operator must not be null.")
+//    require(operation != null, "The custom operator must not be null.")
 //    operation.setInput(this.set)
 //    wrap(operation.createResult)
 //  }
@@ -1238,7 +1254,7 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
 
   /**
    * Partitions a DataSet on the key returned by the selector, using a custom partitioner.
-   * This method takes the key selector t get the key to partition on, and a partitioner that
+   * This method takes the key selector to get the key to partition on, and a partitioner that
    * accepts the key type.
    * <p>
    * Note: This method works only on single field keys, i.e. the selector cannot return tuples
@@ -1329,7 +1345,7 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
       rowDelimiter: String = ScalaCsvOutputFormat.DEFAULT_LINE_DELIMITER,
       fieldDelimiter: String = ScalaCsvOutputFormat.DEFAULT_FIELD_DELIMITER,
       writeMode: FileSystem.WriteMode = null): DataSink[T] = {
-    Validate.isTrue(javaSet.getType.isTupleType, "CSV output can only be used with Tuple DataSets.")
+    require(javaSet.getType.isTupleType, "CSV output can only be used with Tuple DataSets.")
     val of = new ScalaCsvOutputFormat[Product](new Path(filePath), rowDelimiter, fieldDelimiter)
     if (writeMode != null) {
       of.setWriteMode(writeMode)
@@ -1345,8 +1361,8 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
       outputFormat: FileOutputFormat[T],
       filePath: String,
       writeMode: FileSystem.WriteMode = null): DataSink[T] = {
-    Validate.notNull(filePath, "File path must not be null.")
-    Validate.notNull(outputFormat, "Output format must not be null.")
+    require(filePath != null, "File path must not be null.")
+    require(outputFormat != null, "Output format must not be null.")
     outputFormat.setOutputFilePath(new Path(filePath))
     if (writeMode != null) {
       outputFormat.setWriteMode(writeMode)
@@ -1360,38 +1376,78 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
   def output(outputFormat: OutputFormat[T]): DataSink[T] = {
     javaSet.output(outputFormat)
   }
-
+  
   /**
-   * Writes a DataSet to the standard output stream (stdout). This uses [[AnyRef.toString]] on
-   * each element.
+   * Prints the elements in a DataSet to the standard output stream [[System.out]] of the
+   * JVM that calls the print() method. For programs that are executed in a cluster, this
+   * method needs to gather the contents of the DataSet back to the client, to print it
+   * there.
+   *
+   * The string written for each element is defined by the [[AnyRef.toString]] method.
+   *
+   * This method immediately triggers the program execution, similar to the
+   * [[collect()]] and [[count()]] methods.
    */
-  def print(): DataSink[T] = {
-    output(new PrintingOutputFormat[T](false))
+  def print(): Unit = {
+    javaSet.print()
+  }
+  
+  /**
+   * Prints the elements in a DataSet to the standard error stream [[System.err]] of the
+   * JVM that calls the print() method. For programs that are executed in a cluster, this
+   * method needs to gather the contents of the DataSet back to the client, to print it
+   * there.
+   *
+   * The string written for each element is defined by the [[AnyRef.toString]] method.
+   *
+   * This method immediately triggers the program execution, similar to the
+   * [[collect()]] and [[count()]] methods.
+   */
+  def printToErr(): Unit = {
+    javaSet.printToErr()
   }
 
+  /**
+   * Writes a DataSet to the standard output streams (stdout) of the TaskManagers that execute
+   * the program (or more specifically, the data sink operators). On a typical cluster setup, the
+   * data will appear in the TaskManagers' <i>.out</i> files.
+   *
+   * To print the data to the console or stdout stream of the client process instead, use the
+   * [[print()]] method.
+   *
+   * For each element of the DataSet the result of [[AnyRef.toString()]] is written.
+   *
+   * @param prefix The string to prefix each line of the output with. This helps identifying outputs
+   *               from different printing sinks.   
+   * @return The DataSink operator that writes the DataSet.
+   */
+  def printOnTaskManager(prefix: String): DataSink[T] = {
+    javaSet.printOnTaskManager(prefix)
+  }
+  
   /**
    * *
    * Writes a DataSet to the standard output stream (stdout) with a sink identifier prefixed.
    * This uses [[AnyRef.toString]] on each element.
    * @param sinkIdentifier The string to prefix the output with.
+   * 
+   * @deprecated Use [[printOnTaskManager(String)]] instead.
    */
+  @Deprecated
+  @deprecated
   def print(sinkIdentifier: String): DataSink[T] = {
     output(new PrintingOutputFormat[T](sinkIdentifier, false))
-  }
-
-  /**
-   * Writes a DataSet to the standard error stream (stderr). This uses [[AnyRef.toString]] on
-   * each element.
-   */
-  def printToErr(): DataSink[T] = {
-    output(new PrintingOutputFormat[T](true))
   }
 
   /**
    * Writes a DataSet to the standard error stream (stderr) with a sink identifier prefixed.
    * This uses [[AnyRef.toString]] on each element.
    * @param sinkIdentifier The string to prefix the output with.
+   * 
+   * @deprecated Use [[printOnTaskManager(String)]] instead.
    */
+  @Deprecated
+  @deprecated
   def printToErr(sinkIdentifier: String): DataSink[T] = {
       output(new PrintingOutputFormat[T](sinkIdentifier, true))
   }

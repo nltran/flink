@@ -20,8 +20,8 @@ package org.apache.flink.graph.test;
 
 import com.google.common.base.Charsets;
 import com.google.common.io.Files;
-import org.apache.flink.graph.example.GSAConnectedComponentsExample;
-import org.apache.flink.graph.example.GSASingleSourceShortestPathsExample;
+import org.apache.flink.graph.example.GSAConnectedComponents;
+import org.apache.flink.graph.example.GSASingleSourceShortestPaths;
 import org.apache.flink.test.util.MultipleProgramsTestBase;
 import org.junit.After;
 import org.junit.Before;
@@ -69,7 +69,7 @@ public class GatherSumApplyITCase extends MultipleProgramsTestBase {
 
 	@Test
 	public void testConnectedComponents() throws Exception {
-		GSAConnectedComponentsExample.main(new String[]{edgesPath, resultPath, "16"});
+		GSAConnectedComponents.main(new String[]{edgesPath, resultPath, "16"});
 		expectedResult = "1 1\n" +
 				"2 1\n" +
 				"3 1\n" +
@@ -85,8 +85,8 @@ public class GatherSumApplyITCase extends MultipleProgramsTestBase {
 	// --------------------------------------------------------------------------------------------
 
 	@Test
-	public void testSingleSourceShortestPath() throws Exception {
-		GSASingleSourceShortestPathsExample.main(new String[]{"1", edgesPath, resultPath, "16"});
+	public void testSingleSourceShortestPaths() throws Exception {
+		GSASingleSourceShortestPaths.main(new String[]{"1", edgesPath, resultPath, "16"});
 		expectedResult = "1 0.0\n" +
 				"2 12.0\n" +
 				"3 13.0\n" +
@@ -95,7 +95,6 @@ public class GatherSumApplyITCase extends MultipleProgramsTestBase {
 				"6 Infinity\n" +
 				"7 Infinity\n";
 	}
-
 
 	// --------------------------------------------------------------------------------------------
 	//  Sample data

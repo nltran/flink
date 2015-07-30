@@ -37,7 +37,7 @@ import org.apache.flink.streaming.api.functions.aggregation.AggregationFunction;
 import org.apache.flink.streaming.api.functions.aggregation.AggregationFunction.AggregationType;
 import org.apache.flink.streaming.api.functions.aggregation.ComparableAggregator;
 import org.apache.flink.streaming.api.functions.aggregation.SumAggregator;
-import org.apache.flink.streaming.api.operators.StreamOperator;
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.windowing.GroupedActiveDiscretizer;
 import org.apache.flink.streaming.api.operators.windowing.GroupedStreamDiscretizer;
 import org.apache.flink.streaming.api.operators.windowing.GroupedWindowBuffer;
@@ -76,7 +76,7 @@ import org.apache.flink.streaming.util.keys.KeySelectorUtil;
 /**
  * A {@link WindowedDataStream} represents a data stream that has been
  * discretised into windows. User defined function such as
- * {@link #reduceWindow(ReduceFunction)}, {@link #mapWindow()} or aggregations
+ * {@link #reduceWindow(ReduceFunction)}, {@link #mapWindow(WindowMapFunction)} or aggregations
  * can be applied to the windows. The results of these transformations are also
  * WindowedDataStreams of the same discretisation unit.
  * 
@@ -149,6 +149,7 @@ public class WindowedDataStream<OUT> {
 	 */
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public WindowedDataStream<OUT> every(WindowingHelper policyHelper) {
+		policyHelper.setExecutionConfig(getExecutionConfig());
 		WindowedDataStream<OUT> ret = this.copy();
 		if (ret.evictionHelper == null) {
 			ret.evictionHelper = ret.triggerHelper;
@@ -349,7 +350,7 @@ public class WindowedDataStream<OUT> {
 	 *            The function that will be applied to the windows.
 	 * @return The transformed DataStream
 	 */
-	public <R> WindowedDataStream<R> mapWindow(WindowMapFunction<OUT, R> windowMapFunction) {
+	public <R> DiscretizedStream<R> mapWindow(WindowMapFunction<OUT, R> windowMapFunction) {
 		return discretize(WindowTransformation.MAPWINDOW.with(clean(windowMapFunction)),
 				getWindowBuffer(WindowTransformation.MAPWINDOW)).mapWindow(windowMapFunction);
 	}
@@ -372,7 +373,7 @@ public class WindowedDataStream<OUT> {
 	 *            The output type of the operator.
 	 * @return The transformed DataStream
 	 */
-	public <R> WindowedDataStream<R> mapWindow(WindowMapFunction<OUT, R> windowMapFunction,
+	public <R> DiscretizedStream<R> mapWindow(WindowMapFunction<OUT, R> windowMapFunction,
 			TypeInformation<R> outType) {
 
 		return discretize(WindowTransformation.MAPWINDOW.with(windowMapFunction),
@@ -383,9 +384,9 @@ public class WindowedDataStream<OUT> {
 	private DiscretizedStream<OUT> discretize(WindowTransformation transformation,
 			WindowBuffer<OUT> windowBuffer) {
 
-		StreamOperator<OUT, WindowEvent<OUT>> discretizer = getDiscretizer();
+		OneInputStreamOperator<OUT, WindowEvent<OUT>> discretizer = getDiscretizer();
 
-		StreamOperator<WindowEvent<OUT>, StreamWindow<OUT>> bufferOperator = getBufferOperator(windowBuffer);
+		OneInputStreamOperator<WindowEvent<OUT>, StreamWindow<OUT>> bufferOperator = getBufferOperator(windowBuffer);
 
 		@SuppressWarnings({ "unchecked", "rawtypes" })
 		TypeInformation<WindowEvent<OUT>> bufferEventType = new TupleTypeInfo(WindowEvent.class,
@@ -435,7 +436,7 @@ public class WindowedDataStream<OUT> {
 				.with(clean(reduceFunction));
 
 		// We get the windowbuffer and set it to emit empty windows with
-		// sequential IDs. This logic is necessarry to merge windows created in
+		// sequential IDs. This logic is necessary to merge windows created in
 		// parallel.
 		WindowBuffer<OUT> windowBuffer = getWindowBuffer(transformation).emitEmpty().sequentialID();
 
@@ -463,7 +464,7 @@ public class WindowedDataStream<OUT> {
 	/**
 	 * Based on the defined policies, returns the stream discretizer to be used
 	 */
-	private StreamOperator<OUT, WindowEvent<OUT>> getDiscretizer() {
+	private OneInputStreamOperator<OUT, WindowEvent<OUT>> getDiscretizer() {
 		if (discretizerKey == null) {
 			return new StreamDiscretizer<OUT>(getTrigger(), getEviction());
 		} else if (getTrigger() instanceof CentralActiveTrigger) {
@@ -478,7 +479,7 @@ public class WindowedDataStream<OUT> {
 
 	}
 
-	private StreamOperator<WindowEvent<OUT>, StreamWindow<OUT>> getBufferOperator(
+	private OneInputStreamOperator<WindowEvent<OUT>, StreamWindow<OUT>> getBufferOperator(
 			WindowBuffer<OUT> windowBuffer) {
 		if (discretizerKey == null) {
 			return new StreamWindowBuffer<OUT>(windowBuffer);
@@ -598,8 +599,7 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> sum(int positionToSum) {
-		return aggregate((AggregationFunction<OUT>) SumAggregator.getSumFunction(positionToSum,
-				getClassAtPos(positionToSum), getType()));
+		return aggregate(new SumAggregator<OUT>(positionToSum, getType(), getExecutionConfig()));
 	}
 
 	/**
@@ -609,13 +609,12 @@ public class WindowedDataStream<OUT> {
 	 * stream's underlying type. A dot can be used to drill down into objects,
 	 * as in {@code "field1.getInnerField2()" }.
 	 * 
-	 * @param positionToSum
+	 * @param field
 	 *            The field to sum
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> sum(String field) {
-		return aggregate((AggregationFunction<OUT>) SumAggregator.getSumFunction(field, getType(),
-				getExecutionConfig()));
+		return aggregate(new SumAggregator<OUT>(field, getType(), getExecutionConfig()));
 	}
 
 	/**
@@ -627,8 +626,8 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> min(int positionToMin) {
-		return aggregate(ComparableAggregator.getAggregator(positionToMin, getType(),
-				AggregationType.MIN));
+		return aggregate(new ComparableAggregator<OUT>(positionToMin, getType(), AggregationType.MIN,
+				getExecutionConfig()));
 	}
 
 	/**
@@ -644,7 +643,7 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> min(String field) {
-		return aggregate(ComparableAggregator.getAggregator(field, getType(), AggregationType.MIN,
+		return aggregate(new ComparableAggregator<OUT>(field, getType(), AggregationType.MIN,
 				false, getExecutionConfig()));
 	}
 
@@ -688,8 +687,8 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> minBy(int positionToMinBy, boolean first) {
-		return aggregate(ComparableAggregator.getAggregator(positionToMinBy, getType(),
-				AggregationType.MINBY, first));
+		return aggregate(new ComparableAggregator<OUT>(positionToMinBy, getType(), AggregationType.MINBY, first,
+				getExecutionConfig()));
 	}
 
 	/**
@@ -708,8 +707,8 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> minBy(String field, boolean first) {
-		return aggregate(ComparableAggregator.getAggregator(field, getType(),
-				AggregationType.MINBY, first, getExecutionConfig()));
+		return aggregate(new ComparableAggregator<OUT>(field, getType(), AggregationType.MINBY,
+				first, getExecutionConfig()));
 	}
 
 	/**
@@ -721,8 +720,8 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> max(int positionToMax) {
-		return aggregate(ComparableAggregator.getAggregator(positionToMax, getType(),
-				AggregationType.MAX));
+		return aggregate(new ComparableAggregator<OUT>(positionToMax, getType(), AggregationType.MAX,
+				getExecutionConfig()));
 	}
 
 	/**
@@ -738,7 +737,7 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> max(String field) {
-		return aggregate(ComparableAggregator.getAggregator(field, getType(), AggregationType.MAX,
+		return aggregate(new ComparableAggregator<OUT>(field, getType(), AggregationType.MAX,
 				false, getExecutionConfig()));
 	}
 
@@ -782,8 +781,8 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> maxBy(int positionToMaxBy, boolean first) {
-		return aggregate(ComparableAggregator.getAggregator(positionToMaxBy, getType(),
-				AggregationType.MAXBY, first));
+		return aggregate(new ComparableAggregator<OUT>(positionToMaxBy, getType(), AggregationType.MAXBY, first,
+				getExecutionConfig()));
 	}
 
 	/**
@@ -802,8 +801,8 @@ public class WindowedDataStream<OUT> {
 	 * @return The transformed DataStream.
 	 */
 	public WindowedDataStream<OUT> maxBy(String field, boolean first) {
-		return aggregate(ComparableAggregator.getAggregator(field, getType(),
-				AggregationType.MAXBY, first, getExecutionConfig()));
+		return aggregate(new ComparableAggregator<OUT>(field, getType(), AggregationType.MAXBY, first,
+				getExecutionConfig()));
 	}
 
 	private WindowedDataStream<OUT> aggregate(AggregationFunction<OUT> aggregator) {
@@ -861,10 +860,6 @@ public class WindowedDataStream<OUT> {
 
 	public ExecutionConfig getExecutionConfig() {
 		return dataStream.getExecutionConfig();
-	}
-
-	protected Class<?> getClassAtPos(int pos) {
-		return dataStream.getClassAtPos(pos);
 	}
 
 	protected WindowedDataStream<OUT> copy() {

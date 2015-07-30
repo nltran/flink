@@ -60,7 +60,7 @@ public class WordCount {
 		
 		// set up the execution environment
 		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
-		
+
 		// get input data
 		DataSet<String> text = getTextDataSet(env);
 
@@ -74,12 +74,13 @@ public class WordCount {
 		// emit result
 		if(fileOutput) {
 			counts.writeAsCsv(outputPath, "\n", " ");
+			// execute program
+			env.execute("WordCount Example");
 		} else {
 			counts.print();
 		}
 		
-		// execute program
-		env.execute("WordCount Example");
+
 	}
 	
 	// *************************************************************************

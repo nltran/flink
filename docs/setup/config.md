@@ -39,6 +39,7 @@ file require restarting the Flink JobManager and TaskManagers.
 The configuration files for the TaskManagers can be different, Flink does not assume 
 uniform machines in the cluster.
 
+
 * This will be replaced by the TOC
 {:toc}
 
@@ -89,7 +90,7 @@ job by calling `setParallelism(int parallelism)` on the `ExecutionEnvironment`
 or by passing `-p <parallelism>` to the Flink Command-line frontend. It can be
 overwritten for single transformations by calling `setParallelism(int
 parallelism)` on an operator. See the [programming
-guide](programming_guide.html#parallel-execution) for more information about the
+guide]({{site.baseurl}}/apis/programming_guide.html#parallel-execution) for more information about the
 parallelism.
 
 - `fs.hdfs.hadoopconf`: The absolute path to the Hadoop File System's (HDFS)
@@ -147,6 +148,27 @@ JVM's heap space for internal data buffers, leaving 20% of the JVM's heap space
 free for objects created by user-defined functions. (DEFAULT: 0.7)
 This parameter is only evaluated, if `taskmanager.memory.size` is not set.
 
+- `env.java.opts`: Set custom JVM options. This value is respected by Flink's start scripts
+and Flink's YARN client.
+This can be used to set different garbage collectors or to include remote debuggers into 
+the JVMs running Flink's services.
+
+- `state.backend`: The backend that will be used to store operator state checkpoints if checkpointing is enabled. 
+  
+  Supported backends: 
+  
+   -  `jobmanager` (in-memory)
+   -  `filesystem` (all filesystems supported by Flink, for example HDFS)
+
+- `state.backend.fs.checkpointdir`: Directory for storing checkpoints in a flink supported filesystem
+Note: State backend must be accessible from the JobManager, use file:// only for local setups. 
+
+- `blob.storage.directory`: Directory for storing blobs (such as user jar's) on the TaskManagers.
+
+- `execution-retries.delay`: Delay between execution retries. Default value "100 s". Note that values
+have to be specified as strings with a unit.
+
+- `execution-retries.default`: Default number of execution retries (Can also be set on a per-job basis).
 
 ## Full Reference
 
@@ -304,13 +326,25 @@ input format's parameters (DEFAULT: 2097152 (= 2 MiBytes)).
 
 ## YARN
 
-Please note that all ports used by Flink in a YARN session are offsetted by the YARN application ID
-to avoid duplicate port allocations when running multiple YARN sessions in parallel. 
 
-So if `yarn.am.rpc.port` is configured to `10245` and the session's application ID is `application_1406629969999_0002`, then the actual port being used is 10245 + 2 = 10247
+- `yarn.heap-cutoff-ratio`: (Default 0.15) Percentage of heap space to remove from containers started by YARN.
+When a user requests a certain amount of memory for each TaskManager container (for example 4 GB),
+we can not pass this amount as the maximum heap space for the JVM (`-Xmx` argument) because the JVM
+is also allocating memory outside the heap. YARN is very strict with killing containers which are using
+more memory than requested.
+Therefore, we remove a 15% of the memory from the requested heap as a safety margin.
+- `yarn.heap-cutoff-min`: (Default 384 MB) Minimum amount of memory to cut off the requested heap size.
 
-- `yarn.heap-cutoff-ratio`: Percentage of heap space to remove from containers started by YARN.
+- `yarn.reallocate-failed` (Default 'true') Controls whether YARN should reallocate failed containers
 
+- `yarn.maximum-failed-containers` (Default: number of requested containers). Maximum number of containers the system
+is going to reallocate in case of a failure.
+
+- `yarn.application-attempts` (Default: 1). Number of ApplicationMaster restarts. Note that that the entire Flink cluster
+will restart and the YARN Client will loose the connection. Also, the JobManager address will change and you'll need
+to set the JM host:port manually. It is recommended to leave this option at 1.
+
+- `yarn.heartbeat-delay` (Default: 5 seconds). Time between heartbeats with the ResourceManager.
 
 ## Background
 
@@ -379,7 +413,7 @@ As a general recommendation, the number of available CPU cores is a good default
 
 When starting a Flink application, users can supply the default number of slots to use for that job.
 The command line value therefore is called `-p` (for parallelism). In addition, it is possible
-to [set the number of slots in the programming APIs](programming_guide.html#parallel-execution) for 
+to [set the number of slots in the programming APIs]({{site.baseurl}}/apis/programming_guide.html#parallel-execution) for 
 the whole application and individual operators.
 
-<img src="img/slots_parallelism.svg" class="img-responsive" />
+<img src="fig/slots_parallelism.svg" class="img-responsive" />

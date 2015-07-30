@@ -40,7 +40,8 @@ public class AccumulatorHelper {
 			if (ownAccumulator == null) {
 				// Take over counter from chained task
 				target.put(otherEntry.getKey(), otherEntry.getValue());
-			} else {
+			}
+			else {
 				// Both should have the same type
 				AccumulatorHelper.compareAccumulatorTypes(otherEntry.getKey(),
 						ownAccumulator.getClass(), otherEntry.getValue().getClass());
@@ -104,15 +105,6 @@ public class AccumulatorHelper {
 		return resultMap;
 	}
 
-	public static String getAccumulatorsFormated(Map<?, Accumulator<?, ?>> newAccumulators) {
-		StringBuilder builder = new StringBuilder();
-		for (Map.Entry<?, Accumulator<?, ?>> entry : newAccumulators.entrySet()) {
-			builder.append("- " + entry.getKey() + " (" + entry.getValue().getClass().getName()
-					+ ")" + ": " + entry.getValue().toString() + "\n");
-		}
-		return builder.toString();
-	}
-
 	public static String getResultsFormated(Map<String, Object> map) {
 		StringBuilder builder = new StringBuilder();
 		for (Map.Entry<String, Object> entry : map.entrySet()) {
@@ -122,12 +114,13 @@ public class AccumulatorHelper {
 		return builder.toString();
 	}
 
-	public static void resetAndClearAccumulators(
-			Map<String, Accumulator<?, ?>> accumulators) {
-		for (Map.Entry<String, Accumulator<?, ?>> entry : accumulators.entrySet()) {
-			entry.getValue().resetLocal();
+	public static void resetAndClearAccumulators(Map<String, Accumulator<?, ?>> accumulators) {
+		if (accumulators != null) {
+			for (Map.Entry<String, Accumulator<?, ?>> entry : accumulators.entrySet()) {
+				entry.getValue().resetLocal();
+			}
+			accumulators.clear();
 		}
-		accumulators.clear();
 	}
 
 	public static Map<String, Accumulator<?, ?>> copy(final Map<String, Accumulator<?,

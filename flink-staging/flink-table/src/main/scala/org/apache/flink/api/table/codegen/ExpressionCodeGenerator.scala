@@ -317,12 +317,12 @@ abstract class ExpressionCodeGenerator[R](
 
       case EqualTo(left, right) =>
         generateIfNonNull(left, right, BOOLEAN_TYPE_INFO) {
-          (leftTerm, rightTerm) => s"$leftTerm == $rightTerm"
+          (leftTerm, rightTerm) => s"$leftTerm.equals($rightTerm)"
         }
 
       case NotEqualTo(left, right) =>
         generateIfNonNull(left, right, BOOLEAN_TYPE_INFO) {
-          (leftTerm, rightTerm) => s"$leftTerm != $rightTerm"
+          (leftTerm, rightTerm) => s"!($leftTerm.equals($rightTerm))"
         }
 
       case And(left, right) =>
@@ -486,6 +486,25 @@ abstract class ExpressionCodeGenerator[R](
           childCode.code +
             s"""
               |$resultTpe $resultTerm = Math.abs(${childCode.resultTerm});
+            """.stripMargin
+        }
+
+      case NumericIsNotNull(child) =>
+        val childCode = generateExpression(child)
+        if (nullCheck) {
+          childCode.code +
+            s"""
+               |boolean $nullTerm = ${childCode.nullTerm};
+               |if ($nullTerm) {
+               |  0;
+               |} else {
+               |  $resultTpe $resultTerm = ${childCode.resultTerm} != null ? 1 : 0;
+               |}
+            """.stripMargin
+        } else {
+          childCode.code +
+            s"""
+               |$resultTpe $resultTerm = ${childCode.resultTerm} != null ? 1 : 0;
             """.stripMargin
         }
 

@@ -18,57 +18,62 @@
 package org.apache.flink.streaming.api.operators.windowing;
 
 import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.streaming.api.operators.ChainableStreamOperator;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.StreamWindow;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
  * This operator applies either split or key partitioning depending on the
  * transformation.
  */
-public class WindowPartitioner<T> extends ChainableStreamOperator<StreamWindow<T>, StreamWindow<T>> {
+public class WindowPartitioner<T> extends AbstractStreamOperator<StreamWindow<T>>
+		implements OneInputStreamOperator<StreamWindow<T>, StreamWindow<T>> {
+
+	private static final long serialVersionUID = 1L;
 
 	private KeySelector<T, ?> keySelector;
 	private int numberOfSplits;
 
 	public WindowPartitioner(KeySelector<T, ?> keySelector) {
-		super(null);
 		this.keySelector = keySelector;
-		withoutInputCopy();
+
+		chainingStrategy = ChainingStrategy.FORCE_ALWAYS;
+		disableInputCopy();
 	}
 
 	public WindowPartitioner(int numberOfSplits) {
-		super(null);
 		this.numberOfSplits = numberOfSplits;
-		withoutInputCopy();
-	}
 
-	private static final long serialVersionUID = 1L;
-
-	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
-		}
+		chainingStrategy = ChainingStrategy.ALWAYS;
 	}
 
 	@Override
-	protected void callUserFunction() throws Exception {
-		StreamWindow<T> currentWindow = nextObject;
+	public void processElement(StreamRecord<StreamWindow<T>> currentWindow) throws Exception {
+
 		if (keySelector == null) {
 			if (numberOfSplits <= 1) {
-				collector.collect(currentWindow);
+				output.collect(currentWindow);
 			} else {
-				for (StreamWindow<T> window : StreamWindow.split(currentWindow, numberOfSplits)) {
-					collector.collect(window);
+				StreamWindow<T> unpackedWindow = currentWindow.getValue();
+				for (StreamWindow<T> window : StreamWindow.split(unpackedWindow, numberOfSplits)) {
+					currentWindow.replace(window);
+					output.collect(currentWindow);
 				}
 			}
 		} else {
 
 			for (StreamWindow<T> window : StreamWindow
-					.partitionBy(currentWindow, keySelector, true)) {
-				collector.collect(window);
+					.partitionBy(currentWindow.getValue(), keySelector, true)) {
+				output.collect(new StreamRecord<StreamWindow<T>>(window));
 			}
 
 		}
+	}
+
+	@Override
+	public void processWatermark(Watermark mark) throws Exception {
+		output.emitWatermark(mark);
 	}
 }

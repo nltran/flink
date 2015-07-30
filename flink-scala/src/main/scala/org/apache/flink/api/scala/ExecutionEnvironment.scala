@@ -20,34 +20,27 @@ package org.apache.flink.api.scala
 import java.util.UUID
 
 import com.esotericsoftware.kryo.Serializer
-import org.apache.commons.lang3.Validate
+import org.apache.flink.api.common.io.{FileInputFormat, InputFormat}
+import org.apache.flink.api.common.typeinfo.{BasicTypeInfo, TypeInformation}
 import org.apache.flink.api.common.{ExecutionConfig, JobExecutionResult}
 import org.apache.flink.api.java.io._
-import org.apache.flink.api.common.typeinfo.TypeInformation
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo
-import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer
-import org.apache.flink.api.java.typeutils.{PojoTypeInfo, ValueTypeInfo, TupleTypeInfoBase}
-import org.apache.flink.api.scala.hadoop.mapred
-import org.apache.flink.api.scala.hadoop.mapreduce
-import org.apache.flink.api.scala.operators.ScalaCsvInputFormat
-import org.apache.flink.core.fs.Path
-
-import org.apache.flink.api.java.{ExecutionEnvironment => JavaEnv, CollectionEnvironment}
-import org.apache.flink.api.common.io.{InputFormat, FileInputFormat}
-
 import org.apache.flink.api.java.operators.DataSource
+import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer
+import org.apache.flink.api.java.typeutils.{PojoTypeInfo, TupleTypeInfoBase, ValueTypeInfo}
+import org.apache.flink.api.java.{CollectionEnvironment, ExecutionEnvironment => JavaEnv}
+import org.apache.flink.api.scala.hadoop.{mapred, mapreduce}
+import org.apache.flink.api.scala.operators.ScalaCsvInputFormat
+import org.apache.flink.configuration.Configuration
+import org.apache.flink.core.fs.Path
 import org.apache.flink.types.StringValue
 import org.apache.flink.util.{NumberSequenceIterator, SplittableIterator}
+import org.apache.hadoop.fs.{Path => HadoopPath}
+import org.apache.hadoop.mapred.{FileInputFormat => MapredFileInputFormat, InputFormat => MapredInputFormat, JobConf}
 import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat => MapreduceFileInputFormat}
 import org.apache.hadoop.mapreduce.{InputFormat => MapreduceInputFormat, Job}
-import org.apache.hadoop.mapred.{FileInputFormat => MapredFileInputFormat,
-InputFormat => MapredInputFormat, JobConf}
-import org.apache.hadoop.fs.{Path => HadoopPath}
-
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
-
 import scala.reflect.ClassTag
 
 /**
@@ -145,6 +138,11 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   def getId: UUID = {
     javaEnv.getId
   }
+  
+  /**
+   * Gets the JobExecutionResult of the last executed job.
+   */
+  def getLastJobExecutionResult = javaEnv.getLastJobExecutionResult
 
   /**
    * Gets the UUID by which this environment is identified, as a string.
@@ -207,7 +205,7 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
    * @param charsetName The name of the character set used to read the file. Default is UTF-0
    */
   def readTextFile(filePath: String, charsetName: String = "UTF-8"): DataSet[String] = {
-    Validate.notNull(filePath, "The file path may not be null.")
+    require(filePath != null, "The file path may not be null.")
     val format = new TextInputFormat(new Path(filePath))
     format.setCharsetName(charsetName)
     val source = new DataSource[String](javaEnv, format, BasicTypeInfo.STRING_TYPE_INFO,
@@ -228,7 +226,7 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   def readTextFileWithValue(
       filePath: String,
       charsetName: String = "UTF-8"): DataSet[StringValue] = {
-    Validate.notNull(filePath, "The file path may not be null.")
+    require(filePath != null, "The file path may not be null.")
     val format = new TextValueInputFormat(new Path(filePath))
     format.setCharsetName(charsetName)
     val source = new DataSource[StringValue](
@@ -303,7 +301,7 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
     }
 
     if (includedFields != null) {
-      Validate.isTrue(classesBuf.size == includedFields.length, "Number of tuple fields and" +
+      require(classesBuf.size == includedFields.length, "Number of tuple fields and" +
         " included fields must match.")
       inputFormat.setFields(includedFields, classesBuf.toArray)
     } else {
@@ -330,7 +328,7 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   def readFileOfPrimitives[T : ClassTag : TypeInformation](
       filePath : String,
       delimiter : String = "\n") : DataSet[T] = {
-    Validate.notNull(filePath, "File path must not be null.")
+    require(filePath != null, "File path must not be null.")
     val typeInfo = implicitly[TypeInformation[T]]
     val datasource = new DataSource[T](
       javaEnv,
@@ -347,8 +345,8 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   def readFile[T : ClassTag : TypeInformation](
       inputFormat: FileInputFormat[T],
       filePath: String): DataSet[T] = {
-    Validate.notNull(inputFormat, "InputFormat must not be null.")
-    Validate.notNull(filePath, "File path must not be null.")
+    require(inputFormat != null, "InputFormat must not be null.")
+    require(filePath != null, "File path must not be null.")
     inputFormat.setFilePath(new Path(filePath))
     createInput(inputFormat, implicitly[TypeInformation[T]])
   }
@@ -374,7 +372,7 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
     if (inputFormat == null) {
       throw new IllegalArgumentException("InputFormat must not be null.")
     }
-    Validate.notNull(producedType, "Produced type must not be null")
+    require(producedType != null, "Produced type must not be null")
     wrap(new DataSource[T](javaEnv, inputFormat, producedType, getCallLocationName()))
   }
 
@@ -465,15 +463,14 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   }
 
   /**
-   * Creates a DataSet from the given non-empty [[Seq]]. The elements need to be serializable
-   * because the framework may move the elements into the cluster if needed.
+   * Creates a DataSet from the given non-empty [[Seq]].
    *
    * Note that this operation will result in a non-parallel data source, i.e. a data source with
    * a parallelism of one.
    */
   def fromCollection[T: ClassTag : TypeInformation](
       data: Seq[T]): DataSet[T] = {
-    Validate.notNull(data, "Data must not be null.")
+    require(data != null, "Data must not be null.")
 
     val typeInfo = implicitly[TypeInformation[T]]
     CollectionInputFormat.checkCollection(data.asJavaCollection, typeInfo.getTypeClass)
@@ -486,15 +483,14 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   }
 
   /**
-   * Creates a DataSet from the given [[Iterator]]. The iterator must be serializable because the
-   * framework might move into the cluster if needed.
+   * Creates a DataSet from the given [[Iterator]].
    *
    * Note that this operation will result in a non-parallel data source, i.e. a data source with
    * a parallelism of one.
    */
   def fromCollection[T: ClassTag : TypeInformation] (
     data: Iterator[T]): DataSet[T] = {
-    Validate.notNull(data, "Data must not be null.")
+    require(data != null, "Data must not be null.")
 
     val typeInfo = implicitly[TypeInformation[T]]
     val dataSource = new DataSource[T](
@@ -506,14 +502,13 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   }
 
   /**
-   * Creates a new data set that contains the given elements. The elements must all be of the
-   * same type and must be serializable.
+   * Creates a new data set that contains the given elements.
    *
    * * Note that this operation will result in a non-parallel data source, i.e. a data source with
    * a parallelism of one.
    */
   def fromElements[T: ClassTag : TypeInformation](data: T*): DataSet[T] = {
-    Validate.notNull(data, "Data must not be null.")
+    require(data != null, "Data must not be null.")
     val typeInfo = implicitly[TypeInformation[T]]
     fromCollection(data)(implicitly[ClassTag[T]], typeInfo)
   }
@@ -521,8 +516,7 @@ class ExecutionEnvironment(javaEnv: JavaEnv) {
   /**
    * Creates a new data set that contains elements in the iterator. The iterator is splittable,
    * allowing the framework to create a parallel data source that returns the elements in the
-   * iterator. The iterator must be serializable because the execution environment may ship the
-   * elements into the cluster.
+   * iterator.
    */
   def fromParallelCollection[T: ClassTag : TypeInformation](
       iterator: SplittableIterator[T]): DataSet[T] = {
@@ -643,14 +637,24 @@ object ExecutionEnvironment {
 
   /**
    * Creates a local execution environment. The local execution environment will run the program in
-   * a multi-threaded fashion in the same JVM as the environment was created in. The default degree
-   * of parallelism of the local environment is the number of hardware contexts (CPU cores/threads).
+   * a multi-threaded fashion in the same JVM as the environment was created in. The parallelism of
+   * the local environment is the number of hardware contexts (CPU cores/threads).
    */
   def createLocalEnvironment(
       parallelism: Int = Runtime.getRuntime.availableProcessors())
       : ExecutionEnvironment = {
     val javaEnv = JavaEnv.createLocalEnvironment()
     javaEnv.setParallelism(parallelism)
+    new ExecutionEnvironment(javaEnv)
+  }
+
+  /**
+   * Creates a local execution environment. The local execution environment will run the program in
+   * a multi-threaded fashion in the same JVM as the environment was created in.
+   * This method allows to pass a custom Configuration to the local environment.
+   */
+  def createLocalEnvironment(customConfiguration: Configuration): ExecutionEnvironment = {
+    val javaEnv = JavaEnv.createLocalEnvironment(customConfiguration)
     new ExecutionEnvironment(javaEnv)
   }
 

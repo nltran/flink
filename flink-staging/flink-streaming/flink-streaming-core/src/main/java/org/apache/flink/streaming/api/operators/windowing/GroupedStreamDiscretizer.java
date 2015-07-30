@@ -26,17 +26,18 @@ import org.apache.flink.streaming.api.windowing.StreamWindow;
 import org.apache.flink.streaming.api.windowing.policy.CloneableEvictionPolicy;
 import org.apache.flink.streaming.api.windowing.policy.CloneableTriggerPolicy;
 import org.apache.flink.streaming.api.windowing.windowbuffer.WindowBuffer;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
  * This operator represents the grouped discretization step of a window
  * transformation. The user supplied eviction and trigger policies are applied
  * on a per group basis to create the {@link StreamWindow} that will be further
  * transformed in the next stages. </p> To allow pre-aggregations supply an
- * appropriate {@link WindowBuffer}
+ * appropriate {@link WindowBuffer}.
  */
 public class GroupedStreamDiscretizer<IN> extends StreamDiscretizer<IN> {
 
-	private static final long serialVersionUID = -3469545957144404137L;
+	private static final long serialVersionUID = 1L;
 
 	protected KeySelector<IN, ?> keySelector;
 	protected Configuration parameters;
@@ -59,11 +60,18 @@ public class GroupedStreamDiscretizer<IN> extends StreamDiscretizer<IN> {
 	}
 
 	@Override
-	public void run() throws Exception {
+	public void close() throws Exception {
+		super.close();
+		for (StreamDiscretizer<IN> group : groupedDiscretizers.values()) {
+			group.emitWindow();
+		}
+	}
 
-		while (isRunning && readNext() != null) {
+	@Override
+	public void processElement(StreamRecord<IN> element) throws Exception {
 
-			Object key = keySelector.getKey(nextObject);
+
+			Object key = keySelector.getKey(element.getValue());
 
 			StreamDiscretizer<IN> groupDiscretizer = groupedDiscretizers.get(key);
 
@@ -72,12 +80,7 @@ public class GroupedStreamDiscretizer<IN> extends StreamDiscretizer<IN> {
 				groupedDiscretizers.put(key, groupDiscretizer);
 			}
 
-			groupDiscretizer.processRealElement(nextObject);
-		}
-
-		for (StreamDiscretizer<IN> group : groupedDiscretizers.values()) {
-			group.emitWindow();
-		}
+			groupDiscretizer.processRealElement(element);
 
 	}
 
@@ -95,7 +98,8 @@ public class GroupedStreamDiscretizer<IN> extends StreamDiscretizer<IN> {
 		StreamDiscretizer<IN> groupDiscretizer = new StreamDiscretizer<IN>(triggerPolicy.clone(),
 				evictionPolicy.clone());
 
-		groupDiscretizer.collector = taskContext.getOutputCollector();
+		// TODO: this seems very hacky, maybe we can get around this
+		groupDiscretizer.setup(this.output, this.runtimeContext);
 		groupDiscretizer.open(this.parameters);
 
 		return groupDiscretizer;

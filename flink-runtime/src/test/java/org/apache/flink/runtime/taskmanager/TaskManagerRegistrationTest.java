@@ -28,6 +28,7 @@ import akka.pattern.Patterns;
 import akka.testkit.JavaTestKit;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.StreamingMode;
 import org.apache.flink.runtime.akka.AkkaUtils;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.jobmanager.JobManager;
@@ -36,6 +37,7 @@ import org.apache.flink.runtime.messages.RegistrationMessages.AcknowledgeRegistr
 import org.apache.flink.runtime.messages.RegistrationMessages.RegisterTaskManager;
 import org.apache.flink.runtime.messages.RegistrationMessages.RefuseRegistration;
 import org.apache.flink.runtime.messages.TaskManagerMessages;
+import org.apache.flink.runtime.testingUtils.TestingTaskManager;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -48,6 +50,7 @@ import scala.concurrent.duration.FiniteDuration;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.*;
@@ -147,12 +150,13 @@ public class TaskManagerRegistrationTest {
 				// start a TaskManager that tries to register at the JobManager before the JobManager is
 				// available. we give it the regular JobManager akka URL
 				final ActorRef taskManager = startTaskManager(JobManager.getLocalJobManagerAkkaURL(),
-																new Configuration());
+						new Configuration());
 				// let it try for a bit
 				Thread.sleep(6000);
 
 				// now start the JobManager, with the regular akka URL
-				final ActorRef jobManager = JobManager.startJobManagerActors(new Configuration(), actorSystem)._1();
+				final ActorRef jobManager =
+						JobManager.startJobManagerActors(new Configuration(), actorSystem, StreamingMode.BATCH_ONLY)._1();
 
 				// check that the TaskManagers are registered
 				Future<Object> responseFuture = Patterns.ask(
@@ -238,7 +242,7 @@ public class TaskManagerRegistrationTest {
 						expectMsgClass(RegisterTaskManager.class);
 
 						// we decline the registration
-						getLastSender().tell(new RefuseRegistration("test reason"), getTestActor());
+						getLastSender().tell(new RefuseRegistration(UUID.randomUUID(), "test reason"), getTestActor());
 					}
 				};
 
@@ -279,17 +283,25 @@ public class TaskManagerRegistrationTest {
 				// the messages
 				final ActorRef taskManager = startTaskManager(fakeJobManager1);
 
+				final UUID leaderSessionID = UUID.randomUUID();
+
 				// validate initial registration
 				new Within(new FiniteDuration(2, TimeUnit.SECONDS)) {
 
 					@Override
 					protected void run() {
 						// the TaskManager should try to register
-						expectMsgClass(RegisterTaskManager.class);
+						RegisterTaskManager message = expectMsgClass(RegisterTaskManager.class);
 
 						// we accept the registration
-						taskManager.tell(new AcknowledgeRegistration(fakeJobManager1, new InstanceID(), 45234),
-										fakeJobManager1);
+						taskManager.tell(
+								new AcknowledgeRegistration(
+										message.registrationSessionID(),
+										leaderSessionID,
+										fakeJobManager1,
+										new InstanceID(),
+										45234),
+								fakeJobManager1);
 					}
 				};
 
@@ -329,10 +341,16 @@ public class TaskManagerRegistrationTest {
 
 					@Override
 					protected void run() {
-						expectMsgClass(RegisterTaskManager.class);
+						RegisterTaskManager message = expectMsgClass(RegisterTaskManager.class);
 
 						// we accept the registration
-						taskManager.tell(new AcknowledgeRegistration(jm2Closure, new InstanceID(), 45234),
+						taskManager.tell(
+								new AcknowledgeRegistration(
+										message.registrationSessionID(),
+										leaderSessionID,
+										jm2Closure,
+										new InstanceID(),
+										45234),
 								jm2Closure);
 					}
 				};
@@ -371,6 +389,7 @@ public class TaskManagerRegistrationTest {
 							NONE_STRING, // no actor name -> random
 							new Some<String>(jobManager.path().toString()), // job manager path
 							false, // init network stack !!!
+							StreamingMode.BATCH_ONLY,
 							TaskManager.class);
 
 					watch(taskManager);
@@ -404,8 +423,69 @@ public class TaskManagerRegistrationTest {
 	}
 
 	@Test
-	public void testStartupWhenBlobDirectoriesAreNotWritable() {
+	public void testCheckForValidRegistrationSessionIDs() {
+		new JavaTestKit(actorSystem) {{
+			try {
+				// we make the test actor (the test kit) the JobManager to intercept
+				// the messages
+				final ActorRef taskManager = startTaskManager(getTestActor());
 
+				final UUID falseLeaderSessionID = UUID.randomUUID();
+				final UUID trueLeaderSessionID = UUID.randomUUID();
+
+				new Within(new FiniteDuration(20, TimeUnit.SECONDS)) {
+
+					@Override
+					protected void run() {
+						taskManager.tell(TaskManagerMessages.getNotifyWhenRegisteredAtJobManagerMessage(), getTestActor());
+
+						// the TaskManager should try to register
+						RegisterTaskManager registerTaskManager = expectMsgClass(RegisterTaskManager.class);
+
+						final ActorRef tm = getLastSender();
+
+						// This AcknowledgeRegistration message should be discarded because the
+						// registration session ID is wrong
+						tm.tell(new AcknowledgeRegistration(
+									UUID.randomUUID(),
+									falseLeaderSessionID,
+									getTestActor(),
+									new InstanceID(),
+									1),
+								getTestActor());
+
+						// Valid AcknowledgeRegistration message
+						tm.tell(new AcknowledgeRegistration(
+										registerTaskManager.registrationSessionID(),
+										trueLeaderSessionID,
+										getTestActor(),
+										new InstanceID(),
+										1),
+								getTestActor());
+
+						Object message = null;
+						Object confirmMessageClass = TaskManagerMessages.getRegisteredAtJobManagerMessage().getClass();
+
+						while(message == null || !(message.getClass().equals(confirmMessageClass))) {
+							message = expectMsgAnyClassOf(
+									TaskManagerMessages.getRegisteredAtJobManagerMessage().getClass(),
+									RegisterTaskManager.class,
+									TaskManagerMessages.Heartbeat.class);
+						}
+
+						tm.tell(JobManagerMessages.getRequestLeaderSessionID(), getTestActor());
+
+						expectMsgEquals(new JobManagerMessages.ResponseLeaderSessionID(Option.apply(trueLeaderSessionID)));
+					}
+				};
+
+				stopActor(taskManager);
+			}
+			catch (Throwable e) {
+				e.printStackTrace();
+				fail(e.getMessage());
+			}
+		}};
 	}
 
 	// --------------------------------------------------------------------------------------------
@@ -415,7 +495,8 @@ public class TaskManagerRegistrationTest {
 	private static ActorRef startJobManager() throws Exception {
 		// start the actors. don't give names, so they get generated names and we
 		// avoid conflicts with the actor names
-		return JobManager.startJobManagerActors(new Configuration(), actorSystem, NONE_STRING, NONE_STRING)._1();
+		return JobManager.startJobManagerActors(new Configuration(), actorSystem, 
+												NONE_STRING, NONE_STRING, StreamingMode.BATCH_ONLY)._1();
 	}
 
 	private static ActorRef startTaskManager(ActorRef jobManager) throws Exception {
@@ -430,7 +511,8 @@ public class TaskManagerRegistrationTest {
 				NONE_STRING, // no actor name -> random
 				new Some<String>(jobManagerUrl), // job manager path
 				true, // local network stack only
-				TaskManager.class);
+				StreamingMode.BATCH_ONLY,
+				TestingTaskManager.class);
 	}
 
 	private static void stopActor(ActorRef actor) {

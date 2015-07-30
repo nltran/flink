@@ -25,7 +25,7 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>0.9-SNAPSHOT</version>
+		<version>0.10-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
@@ -40,7 +40,7 @@ under the License.
 			<artifactId>${shading-artifact.name}</artifactId>
 			<version>${project.version}</version>
 		</dependency>
-		
+
 		<dependency>
 			<groupId>commons-collections</groupId>
 			<artifactId>commons-collections</artifactId>
@@ -65,18 +65,17 @@ under the License.
 		</dependency>
 
         <dependency>
-            <groupId>org.apache.ignite</groupId>
-            <artifactId>ignite-core</artifactId>
-            <version>1.0.0</version>
+          <groupId>org.apache.ignite</groupId>
+          <artifactId>ignite-core</artifactId>
+          <version>1.0.0</version>
         </dependency>
 
         <dependency>
-            <groupId>org.apache.ignite</groupId>
-            <artifactId>ignite-spring</artifactId>
-            <version>1.0.0</version>
+          <groupId>org.apache.ignite</groupId>
+          <artifactId>ignite-spring</artifactId>
+          <version>1.0.0</version>
         </dependency>
-	</dependencies>
-
+        </dependencies>
 
 	<build>
 		<plugins>

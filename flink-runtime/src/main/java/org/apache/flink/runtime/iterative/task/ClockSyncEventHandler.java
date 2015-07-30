@@ -172,7 +172,7 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 //		if (this.endOfSuperstep) {
 //			throw new RuntimeException("Encountered WorderDoneEvent when still in End-of-Superstep status.");
 //		}
-//		
+//
 //		workerDoneEventCounter++;
 //
 //		String[] aggNames = workerDoneEvent.getAggregatorNames();
@@ -181,7 +181,7 @@ public class ClockSyncEventHandler implements EventListener<TaskEvent> {
 //		if (aggNames.length != aggregates.length) {
 //			throw new RuntimeException("Inconsistent WorkerDoneEvent received!");
 //		}
-//		
+//
 //		for (int i = 0; i < aggNames.length; i++) {
 //			@SuppressWarnings("unchecked")
 //			Aggregator<Value> aggregator = (Aggregator<Value>) this.aggregators.get(aggNames[i]);

@@ -18,27 +18,27 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public class StreamMap<IN, OUT> extends ChainableStreamOperator<IN, OUT> {
+public class StreamMap<IN, OUT>
+		extends AbstractUdfStreamOperator<OUT, MapFunction<IN, OUT>>
+		implements OneInputStreamOperator<IN, OUT> {
+
 	private static final long serialVersionUID = 1L;
-
-	private MapFunction<IN, OUT> mapper;
 
 	public StreamMap(MapFunction<IN, OUT> mapper) {
 		super(mapper);
-		this.mapper = mapper;
+		chainingStrategy = ChainingStrategy.ALWAYS;
 	}
 
 	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
-		}
+	public void processElement(StreamRecord<IN> element) throws Exception {
+		output.collect(element.replace(userFunction.map(element.getValue())));
 	}
 
 	@Override
-	protected void callUserFunction() throws Exception {
-		collector.collect(mapper.map(nextObject));
+	public void processWatermark(Watermark mark) throws Exception {
+		output.emitWatermark(mark);
 	}
-
 }

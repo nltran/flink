@@ -26,7 +26,6 @@ import org.apache.flink.streaming.api.datastream.IterativeDataStream;
 import org.apache.flink.streaming.api.datastream.SplitDataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
-import org.apache.flink.util.Collector;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -104,27 +103,32 @@ public class IterateExample {
 	// *************************************************************************
 
 	/**
-	 * Generate random integer pairs from the range from 0 to BOUND/2
+	 * Generate BOUND number of random integer pairs from the range from 0 to BOUND/2
 	 */
 	private static class RandomFibonacciSource implements SourceFunction<Tuple2<Integer, Integer>> {
 		private static final long serialVersionUID = 1L;
 
 		private Random rnd = new Random();
 
+		private volatile boolean isRunning = true;
+		private int counter = 0;
+
 		@Override
-		public void run(Collector<Tuple2<Integer, Integer>> collector) throws Exception {
-			while (true) {
+		public void run(SourceContext<Tuple2<Integer, Integer>> ctx) throws Exception {
+
+			while (isRunning && counter < BOUND) {
 				int first = rnd.nextInt(BOUND / 2 - 1) + 1;
 				int second = rnd.nextInt(BOUND / 2 - 1) + 1;
 
-				collector.collect(new Tuple2<Integer, Integer>(first, second));
-				Thread.sleep(500L);
+				ctx.collect(new Tuple2<Integer, Integer>(first, second));
+				counter++;
+				Thread.sleep(50L);
 			}
 		}
 
 		@Override
 		public void cancel() {
-			// no cleanup needed
+			isRunning = false;
 		}
 	}
 

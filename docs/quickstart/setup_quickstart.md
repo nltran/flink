@@ -30,7 +30,7 @@ Get Flink up and running in a few simple steps.
 Flink runs on __Linux, Mac OS X, and Windows__. To be able to run Flink, the
 only requirement is to have a working __Java 6.x__ (or higher)
 installation. Windows users, please take a look at the
-[Flink on Windows](local_setup.html#flink-on-windows) guide which describes
+[Flink on Windows]({{ site.baseurl }}/setup/local_setup.html#flink-on-windows) guide which describes
 how to run Flink on Windows for local setups.
 
 ## Download
@@ -69,6 +69,9 @@ $ bin/start-local.sh    # Start Flink
 Check the __JobManager's web frontend__ at [http://localhost:8081](http://localhost:8081) and make
 sure everything is up and running.
 
+Instead of starting Flink with `bin/start-local.sh` you can also start Flink in an streaming optimized
+mode, using `bin/start-local-streaming.sh`.
+
 ## Run Example
 
 Run the __Word Count example__ to see Flink at work.
@@ -103,7 +106,8 @@ on each node of your setup.
 3. Add the IPs or hostnames (one per line) of all __worker nodes__ (TaskManager) to the slaves files
 in `conf/slaves`.
 
-You can now __start the cluster__ at your master node with `bin/start-cluster.sh`.
+You can now __start the cluster__ at your master node with `bin/start-cluster.sh`. If you are planning
+to run only streaming jobs with Flink, you can also an optimized streaming mode: `start-cluster-streaming.sh`.
 
 
 The following __example__ illustrates the setup with three nodes (with IP addresses from _10.0.0.1_
@@ -112,7 +116,7 @@ configuration files, which need to be accessible at the same path on all machine
 
 <div class="row">
   <div class="col-md-6 text-center">
-    <img src="_img/quickstart_cluster.png" style="width: 85%">
+    <img src="{{ site.baseurl }}/page/img/quickstart_cluster.png" style="width: 85%">
   </div>
 <div class="col-md-6">
   <div class="row">
@@ -132,7 +136,7 @@ configuration files, which need to be accessible at the same path on all machine
 </div>
 </div>
 
-Have a look at the [Configuration](config.html) section of the documentation to see other available configuration options.
+Have a look at the [Configuration]({{ site.baseurl }}/setup/config.html) section of the documentation to see other available configuration options.
 For Flink to run efficiently, a few configuration values need to be set.
 
 In particular, 
@@ -148,7 +152,7 @@ are very important configuration values.
 ## Flink on YARN
 You can easily deploy Flink on your existing __YARN cluster__. 
 
-1. Download the __Flink YARN package__ with the YARN client: [Flink for YARN]({{site.FLINK_DOWNLOAD_URL_YARN_STABLE}})
+1. Download the __Flink Hadoop2 package__: [Flink with Hadoop 2]({{site.FLINK_DOWNLOAD_URL_HADOOP2_STABLE}})
 2. Make sure your __HADOOP_HOME__ (or _YARN_CONF_DIR_ or _HADOOP_CONF_DIR_) __environment variable__ is set to read your YARN and HDFS configuration.
 3. Run the __YARN client__ with: `./bin/yarn-session.sh`. You can run the client with options `-n 10 -tm 8192` to allocate 10 TaskManagers with 8GB of memory each.
 

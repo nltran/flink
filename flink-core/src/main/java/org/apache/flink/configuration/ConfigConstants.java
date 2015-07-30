@@ -41,7 +41,6 @@ public final class ConfigConstants {
 	@Deprecated
 	public static final String DEFAULT_PARALLELISM_KEY_OLD = "parallelization.degree.default";
 
-
 	/**
 	 * Config parameter for the number of re-tries for failed tasks. Setting this
 	 * value to 0 effectively disables fault tolerance.
@@ -137,10 +136,16 @@ public final class ConfigConstants {
 	public static final String TASK_MANAGER_NETWORK_NUM_BUFFERS_KEY = "taskmanager.network.numberOfBuffers";
 
 	/**
-	 * The config parameter defining the size of the buffers used in the network stack.
+	 * Deprecated config parameter defining the size of the buffers used in the network stack.
 	 */
+	@Deprecated
 	public static final String TASK_MANAGER_NETWORK_BUFFER_SIZE_KEY = "taskmanager.network.bufferSizeInBytes";
 
+	/**
+	 * Config parameter defining the size of memory buffers used by the network stack and the memory manager.
+	 */
+	public static final String TASK_MANAGER_MEMORY_SEGMENT_SIZE_KEY = "taskmanager.memory.segment-size";
+	
 	/**
 	 * The implementation to use for spillable/spilled intermediate results, which have both
 	 * synchronous and asynchronous implementations: "sync" or "async".
@@ -197,8 +202,17 @@ public final class ConfigConstants {
 	 * Upper bound for heap cutoff on YARN.
 	 * The "yarn.heap-cutoff-ratio" is removing a certain ratio from the heap.
 	 * This value is limiting this cutoff to a absolute value.
+	 *
+	 * THE VALUE IS NO LONGER IN USE.
 	 */
+	@Deprecated
 	public static final String YARN_HEAP_LIMIT_CAP = "yarn.heap-limit-cap";
+
+	/**
+	 * Minimum amount of memory to remove from the heap space as a safety margin.
+	 */
+	public static final String YARN_HEAP_CUTOFF_MIN = "yarn.heap-cutoff-min";
+
 
 	/**
 	 * Reallocate failed YARN containers.
@@ -222,7 +236,7 @@ public final class ConfigConstants {
 	public static final String YARN_APPLICATION_ATTEMPTS = "yarn.application-attempts";
 
 	/**
-	 * The heartbeat intervall between the Application Master and the YARN Resource Manager.
+	 * The heartbeat interval between the Application Master and the YARN Resource Manager.
 	 *
 	 * The default value is 5 (seconds).
 	 */
@@ -246,7 +260,7 @@ public final class ConfigConstants {
 	 */
 	public static final String PATH_HADOOP_CONFIG = "fs.hdfs.hadoopconf";
 	
-	// ------------------------ File System Bahavior ------------------------
+	// ------------------------ File System Behavior ------------------------
 
 	/**
 	 * Key to specify whether the file systems should simply overwrite existing files.
@@ -286,9 +300,9 @@ public final class ConfigConstants {
 	public static final String JOB_MANAGER_WEB_PORT_KEY = "jobmanager.web.port";
 
 	/**
-	 * The config parameter defining the path to the htaccess file protecting the web frontend.
+	 * The option that specifies whether to use the new web frontend
 	 */
-	public static final String JOB_MANAGER_WEB_ACCESS_FILE_KEY = "jobmanager.web.access";
+	public static final String JOB_MANAGER_NEW_WEB_FRONTEND_KEY = "jobmanager.new-web-frontend";
 	
 	/**
 	 * The config parameter defining the number of archived jobs for the jobmanager
@@ -296,6 +310,9 @@ public final class ConfigConstants {
 	public static final String JOB_MANAGER_WEB_ARCHIVE_COUNT = "jobmanager.web.history";
 	
 	public static final String JOB_MANAGER_WEB_LOG_PATH_KEY = "jobmanager.web.logpath";
+
+	/** The directory where the web server's static contents is stored */
+	public static final String JOB_MANAGER_WEB_DOC_ROOT_KEY = "jobmanager.web.docroot";
 	
 	
 	// ------------------------------ Web Client ------------------------------
@@ -392,6 +409,23 @@ public final class ConfigConstants {
 	 * Timeout for all blocking calls that look up remote actors
 	 */
 	public static final String AKKA_LOOKUP_TIMEOUT = "akka.lookup.timeout";
+
+	/**
+	 * Exit JVM on fatal Akka errors
+	 */
+	public static final String AKKA_JVM_EXIT_ON_FATAL_ERROR = "akka.jvm-exit-on-fatal-error";
+	
+	// ----------------------------- Streaming --------------------------------
+	
+	/**
+	 * State backend for checkpoints;
+	 */
+	public static final String STATE_BACKEND = "state.backend";
+	
+	/**
+	 * Directory for saving streaming checkpoints
+	 */
+	public static final String STATE_BACKEND_FS_DIR = "state.backend.fs.checkpointdir";
 	
 	// ----------------------------- Miscellaneous ----------------------------
 	
@@ -475,7 +509,13 @@ public final class ConfigConstants {
 	/**
 	 * Default size of network stack buffers.
 	 */
+	@Deprecated
 	public static final int DEFAULT_TASK_MANAGER_NETWORK_BUFFER_SIZE = 32768;
+
+	/**
+	 * Default size of memory segments in the network stack and the memory manager.
+	 */
+	public static final int DEFAULT_TASK_MANAGER_MEMORY_SEGMENT_SIZE = 32768;
 
 	/**
 	 * The implementation to use for spillable/spilled intermediate results, which have both
@@ -512,6 +552,21 @@ public final class ConfigConstants {
 	 * The default timeout for filesystem stream opening: infinite (means max long milliseconds).
 	 */
 	public static final int DEFAULT_FS_STREAM_OPENING_TIMEOUT = 0;
+
+	// ------------------------ YARN Configuration ------------------------
+
+
+	/**
+	 * Minimum amount of Heap memory to subtract from the requested TaskManager size.
+	 * We came up with these values experimentally.
+	 * Flink fails when the cutoff is set only to 500 mb.
+	 */
+	public static final int DEFAULT_YARN_MIN_HEAP_CUTOFF = 600;
+
+	/**
+	 * Relative amount of memory to subtract from the requested memory.
+	 */
+	public static final float DEFAULT_YARN_HEAP_CUTOFF_RATIO = 0.25f;
 	
 	
 	// ------------------------ File System Behavior ------------------------
@@ -552,7 +607,7 @@ public final class ConfigConstants {
 	 * Setting this value to {@code -1} disables the web frontend.
 	 */
 	public static final int DEFAULT_JOB_MANAGER_WEB_FRONTEND_PORT = 8081;
-
+	
 	/**
 	 * The default number of archived jobs for the jobmanager
 	 */
@@ -608,6 +663,9 @@ public final class ConfigConstants {
 
 	public static String DEFAULT_AKKA_LOOKUP_TIMEOUT = "10 s";
 	
+	// ----------------------------- Streaming Values --------------------------
+	
+	public static String DEFAULT_STATE_BACKEND = "jobmanager";
 
 	// ----------------------------- LocalExecution ----------------------------
 
@@ -616,11 +674,61 @@ public final class ConfigConstants {
 	 */
 	public static final String LOCAL_INSTANCE_MANAGER_NUMBER_TASK_MANAGER = "localinstancemanager.numtaskmanager";
 
-
 	public static final String LOCAL_INSTANCE_MANAGER_START_WEBSERVER = "localinstancemanager.start-webserver";
-	
-	// ------------------------------------------------------------------------
-	
+
+	// --------------------------- ZooKeeper ----------------------------------
+
+	/** ZooKeeper servers. */
+	public static final String ZOOKEEPER_QUORUM_KEY = "ha.zookeeper.quorum";
+
+	/** ZooKeeper root path. */
+	public static final String ZOOKEEPER_DIR_KEY = "ha.zookeeper.dir";
+
+	public static final String ZOOKEEPER_LATCH_PATH = "ha.zookeeper.dir.latch";
+
+	public static final String ZOOKEEPER_LEADER_PATH = "ha.zookeeper.dir.leader";
+
+	public static final String ZOOKEEPER_SESSION_TIMEOUT = "ha.zookeeper.client.session-timeout";
+
+	public static final String ZOOKEEPER_CONNECTION_TIMEOUT = "ha.zookeeper.client.connection-timeout";
+
+	public static final String ZOOKEEPER_RETRY_WAIT = "ha.zookeeper.client.retry-wait";
+
+	public static final String ZOOKEEPER_MAX_RETRY_ATTEMPTS = "ha.zookeeper.client.max-retry-attempts";
+
+	// - Defaults -------------------------------------------------------------
+
+	public static final String DEFAULT_ZOOKEEPER_ZNODE_ROOT = "/flink";
+
+	public static final String DEFAULT_ZOOKEEPER_LATCH_PATH = "/leaderlatch";
+
+	public static final String DEFAULT_ZOOKEEPER_LEADER_PATH = "/leader";
+
+	public static final int DEFAULT_ZOOKEEPER_SESSION_TIMEOUT = 60000;
+
+	public static final int DEFAULT_ZOOKEEPER_CONNECTION_TIMEOUT = 15000;
+
+	public static final int DEFAULT_ZOOKEEPER_RETRY_WAIT = 5000;
+
+	public static final int DEFAULT_ZOOKEEPER_MAX_RETRY_ATTEMPTS = 3;
+
+	// - Defaults for required ZooKeeper configuration keys -------------------
+
+	/** ZooKeeper default client port. */
+	public static final int DEFAULT_ZOOKEEPER_CLIENT_PORT = 2181;
+
+	/** ZooKeeper default init limit. */
+	public static final int DEFAULT_ZOOKEEPER_INIT_LIMIT = 10;
+
+	/** ZooKeeper default sync limit. */
+	public static final int DEFAULT_ZOOKEEPER_SYNC_LIMIT = 5;
+
+	/** ZooKeeper default peer port. */
+	public static final int DEFAULT_ZOOKEEPER_PEER_PORT = 2888;
+
+	/** ZooKeeper default leader port. */
+	public static final int DEFAULT_ZOOKEEPER_LEADER_PORT = 3888;
+
 	/**
 	 * Not instantiable.
 	 */

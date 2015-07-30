@@ -29,8 +29,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
+
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.util.Collector;
+import static org.apache.flink.api.java.functions.FunctionAnnotation.SkipCodeAnalysis;
 
 
 public class Utils {
@@ -70,6 +72,7 @@ public class Utils {
 		}
 	}
 
+	@SkipCodeAnalysis
 	public static class CountHelper<T> extends RichFlatMapFunction<T, Long> {
 
 		private static final long serialVersionUID = 1L;
@@ -93,6 +96,7 @@ public class Utils {
 		}
 	}
 
+	@SkipCodeAnalysis
 	public static class CollectHelper<T> extends RichFlatMapFunction<T, T> {
 
 		private static final long serialVersionUID = 1L;
@@ -110,12 +114,17 @@ public class Utils {
 		@Override
 		public void open(Configuration parameters) throws Exception {
 			this.accumulator = new SerializedListAccumulator<T>();
-			getRuntimeContext().addAccumulator(id, accumulator);
 		}
 
 		@Override
 		public void flatMap(T value, Collector<T> out) throws Exception {
 			accumulator.add(value, serializer);
+		}
+
+		@Override
+		public void close() throws Exception {
+			// Important: should only be added in close method to minimize traffic of accumulators
+			getRuntimeContext().addAccumulator(id, accumulator);
 		}
 	}
 

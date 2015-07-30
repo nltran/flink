@@ -93,14 +93,15 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 	public static final String ENV_CLIENT_USERNAME = "_CLIENT_USERNAME";
 	public static final String ENV_SLOTS = "_SLOTS";
 	public static final String ENV_DETACHED = "_DETACHED";
+	public static final String ENV_STREAMING_MODE = "_STREAMING_MODE";
 	public static final String ENV_DYNAMIC_PROPERTIES = "_DYNAMIC_PROPERTIES";
 
 
 	/**
 	 * Minimum memory requirements, checked by the Client.
 	 */
-	private static final int MIN_JM_MEMORY = 128;
-	private static final int MIN_TM_MEMORY = 128;
+	private static final int MIN_JM_MEMORY = 768; // the minimum memory should be higher than the min heap cutoff
+	private static final int MIN_TM_MEMORY = 768;
 
 	private Configuration conf;
 	private YarnClient yarnClient;
@@ -118,9 +119,9 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 	 */
 	private int slots = -1;
 
-	private int jobManagerMemoryMb = 512;
+	private int jobManagerMemoryMb = 1024;
 
-	private int taskManagerMemoryMb = 512;
+	private int taskManagerMemoryMb = 1024;
 
 	private int taskManagerCount = 1;
 
@@ -140,7 +141,9 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 	private org.apache.flink.configuration.Configuration flinkConfiguration;
 
 	private boolean detached;
+	private boolean streamingMode;
 
+	private String customName = null;
 
 	public FlinkYarnClient() {
 		conf = new YarnConfiguration();
@@ -164,7 +167,7 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 	@Override
 	public void setJobManagerMemory(int memoryMb) {
 		if(memoryMb < MIN_JM_MEMORY) {
-			throw new IllegalArgumentException("The JobManager memory is below the minimum required memory amount "
+			throw new IllegalArgumentException("The JobManager memory ("+memoryMb+") is below the minimum required memory amount "
 					+ "of "+MIN_JM_MEMORY+" MB");
 		}
 		this.jobManagerMemoryMb = memoryMb;
@@ -173,7 +176,7 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 	@Override
 	public void setTaskManagerMemory(int memoryMb) {
 		if(memoryMb < MIN_TM_MEMORY) {
-			throw new IllegalArgumentException("The TaskManager memory is below the minimum required memory amount "
+			throw new IllegalArgumentException("The TaskManager memory ("+memoryMb+") is below the minimum required memory amount "
 					+ "of "+MIN_TM_MEMORY+" MB");
 		}
 		this.taskManagerMemoryMb = memoryMb;
@@ -312,7 +315,7 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 		return detached;
 	}
 
-	public AbstractFlinkYarnCluster deploy(final String clusterName) throws Exception {
+	public AbstractFlinkYarnCluster deploy() throws Exception {
 
 		UserGroupInformation.setConfiguration(conf);
 		UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
@@ -325,11 +328,11 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 			return ugi.doAs(new PrivilegedExceptionAction<AbstractFlinkYarnCluster>() {
 				@Override
 				public AbstractFlinkYarnCluster run() throws Exception {
-					return deployInternal(clusterName);
+					return deployInternal();
 				}
 			});
 		} else {
-			return deployInternal(clusterName);
+			return deployInternal();
 		}
 	}
 
@@ -339,7 +342,7 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 	 * This method will block until the ApplicationMaster/JobManager have been
 	 * deployed on YARN.
 	 */
-	protected AbstractFlinkYarnCluster deployInternal(String clusterName) throws Exception {
+	protected AbstractFlinkYarnCluster deployInternal() throws Exception {
 		isReadyForDepoyment();
 
 		LOG.info("Using values:");
@@ -433,11 +436,11 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 					+ "There are currently only " + freeClusterMem.totalFreeMemory + "MB available." + NOTE_RSC);
 
 		}
-		if( taskManagerMemoryMb > freeClusterMem.containerLimit) {
+		if(taskManagerMemoryMb > freeClusterMem.containerLimit) {
 			LOG.warn("The requested amount of memory for the TaskManagers ("+taskManagerMemoryMb+"MB) is more than "
 					+ "the largest possible YARN container: "+freeClusterMem.containerLimit + NOTE_RSC);
 		}
-		if( jobManagerMemoryMb > freeClusterMem.containerLimit) {
+		if(jobManagerMemoryMb > freeClusterMem.containerLimit) {
 			LOG.warn("The requested amount of memory for the JobManager (" + jobManagerMemoryMb + "MB) is more than "
 					+ "the largest possible YARN container: " + freeClusterMem.containerLimit + NOTE_RSC);
 		}
@@ -576,6 +579,7 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 		appMasterEnv.put(FlinkYarnClient.ENV_CLIENT_USERNAME, UserGroupInformation.getCurrentUser().getShortUserName());
 		appMasterEnv.put(FlinkYarnClient.ENV_SLOTS, String.valueOf(slots));
 		appMasterEnv.put(FlinkYarnClient.ENV_DETACHED, String.valueOf(detached));
+		appMasterEnv.put(FlinkYarnClient.ENV_STREAMING_MODE, String.valueOf(streamingMode));
 
 		if(dynamicPropertiesEncoded != null) {
 			appMasterEnv.put(FlinkYarnClient.ENV_DYNAMIC_PROPERTIES, dynamicPropertiesEncoded);
@@ -588,14 +592,17 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 		capability.setMemory(jobManagerMemoryMb);
 		capability.setVirtualCores(1);
 
-		if(clusterName == null) {
-			clusterName = "Flink session with "+taskManagerCount+" TaskManagers";
-		}
-		if(detached) {
-			clusterName += " (detached)";
+		String name;
+		if(customName == null) {
+			name = "Flink session with "+taskManagerCount+" TaskManagers";
+			if(detached) {
+				name += " (detached)";
+			}
+		} else {
+			name = customName;
 		}
 
-		appContext.setApplicationName(clusterName); // application name
+		appContext.setApplicationName(name); // application name
 		appContext.setApplicationType("Apache Flink");
 		appContext.setAMContainerSpec(amContainer);
 		appContext.setResource(capability);
@@ -724,6 +731,19 @@ public class FlinkYarnClient extends AbstractFlinkYarnClient {
 
 	public String getSessionFilesDir() {
 		return sessionFilesDir.toString();
+	}
+
+	@Override
+	public void setStreamingMode(boolean streamingMode) {
+		this.streamingMode = streamingMode;
+	}
+
+	@Override
+	public void setName(String name) {
+		if(name == null) {
+			throw new IllegalArgumentException("The passed name is null");
+		}
+		customName = name;
 	}
 
 	public static class YarnDeploymentException extends RuntimeException {

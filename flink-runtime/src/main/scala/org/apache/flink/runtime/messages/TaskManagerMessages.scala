@@ -18,13 +18,22 @@
 
 package org.apache.flink.runtime.messages
 
+import org.apache.flink.runtime.accumulators.AccumulatorSnapshot
 import org.apache.flink.runtime.instance.InstanceID
 
 /**
  * Miscellaneous actor messages exchanged with the TaskManager.
  */
 object TaskManagerMessages {
-
+  
+  /**
+   * This message informs the TaskManager about a fatal error that prevents
+   * it from continuing.
+   * 
+   * @param description The description of the problem
+   */
+  case class FatalError(description: String, cause: Throwable)
+  
   /**
    * Tells the task manager to send a heartbeat message to the job manager.
    */
@@ -44,12 +53,14 @@ object TaskManagerMessages {
    *
    * @param instanceID The instance ID of the reporting TaskManager.
    * @param metricsReport utf-8 encoded JSON metrics report from the metricRegistry.
+   * @param accumulators Accumulators of tasks serialized as Tuple2[internal, user-defined]
    */
-  case class Heartbeat(instanceID: InstanceID, metricsReport: Array[Byte])
+  case class Heartbeat(instanceID: InstanceID, metricsReport: Array[Byte],
+     accumulators: Seq[AccumulatorSnapshot])
 
 
   // --------------------------------------------------------------------------
-  //  Utility messages used for notifications during TaskManager startup
+  //  Reporting the current TaskManager stack trace
   // --------------------------------------------------------------------------
 
   /**

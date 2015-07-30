@@ -24,7 +24,7 @@ under the License.
 
 Analysis programs in Flink are regular programs that implement transformations on data sets
 (e.g., filtering, mapping, joining, grouping). The data sets are initially created from certain
-sources (e.g., by reading files, or from collections). Results are returned via sinks, which may for
+sources (e.g., by reading files, or from local collections). Results are returned via sinks, which may for
 example write the data to (distributed) files, or to standard output (for example the command line
 terminal). Flink programs run in a variety of contexts, standalone, or embedded in other programs.
 The execution can happen in a local JVM, or on clusters of many machines.
@@ -63,8 +63,6 @@ public class WordCountExample {
             .sum(1);
 
         wordCounts.print();
-
-        env.execute("Word Count Example");
     }
 
     public static class LineSplitter implements FlatMapFunction<String, Tuple2<String, Integer>> {
@@ -98,8 +96,6 @@ object WordCount {
       .sum(1)
 
     counts.print()
-
-    env.execute("Scala WordCount Example")
   }
 }
 {% endhighlight %}
@@ -117,7 +113,7 @@ To write programs with Flink, you need to include the Flink library correspondin
 your programming language in your project.
 
 The simplest way to do this is to use one of the quickstart scripts: either for
-[Java](java_api_quickstart.html) or for [Scala](scala_api_quickstart.html). They
+[Java]({{ site.baseurl }}/quickstart/java_api_quickstart.html) or for [Scala]({{ site.baseurl }}/quickstart/scala_api_quickstart.html). They
 create a blank project from a template (a Maven Archetype), which sets up everything for you. To
 manually create the project, you can use the archetype and create a project by calling:
 
@@ -139,6 +135,8 @@ mvn archetype:generate /
 {% endhighlight %}
 </div>
 </div>
+
+The archetypes are working for stable releases and preview versions (`-SNAPSHOT`)
 
 If you want to add Flink to an existing Maven project, add the following entry to your
 *dependencies* section in the *pom.xml* file of your project:
@@ -189,13 +187,17 @@ that creates the type information for Flink operations.
 </div>
 </div>
 
+
+
+#### Hadoop Dependency Versions
+
 If you are using Flink together with Hadoop, the version of the dependency may vary depending on the
 version of Hadoop (or more specifically, HDFS) that you want to use Flink with. Please refer to the
-[downloads page]({{site.baseurl}}/downloads.html) for a list of available versions, and instructions
+[downloads page](http://flink.apache.org/downloads.html) for a list of available versions, and instructions
 on how to link with custom versions of Hadoop.
 
 In order to link against the latest SNAPSHOT versions of the code, please follow
-[this guide]({{site.baseurl}}/downloads.html#nightly).
+[this guide](http://flink.apache.org/how-to-contribute.html#snapshots-nightly-builds).
 
 The *flink-clients* dependency is only necessary to invoke the Flink program locally (for example to
 run it standalone for testing and debugging).  If you intend to only export the program as a JAR
@@ -216,9 +218,9 @@ programs with a `main()` method. Each program consists of the same basic parts:
 2. Load/create the initial data,
 3. Specify transformations on this data,
 4. Specify where to put the results of your computations, and
-5. Execute your program.
+5. Trigger the program execution
 
-We will now give an overview of each of those steps but please refer to the respective sections for
+We will now give an overview of each of those steps, please refer to the respective sections for
 more details. Note that all
 {% gh_link /flink-java/src/main/java/org/apache/flink/api/java "core classes of the Java API" %}
 are found in the package `org.apache.flink.api.java`.
@@ -231,6 +233,7 @@ getExecutionEnvironment()
 
 createLocalEnvironment()
 createLocalEnvironment(int parallelism)
+createLocalEnvironment(Configuration customConfiguration)
 
 createRemoteEnvironment(String host, int port, String... jarFiles)
 createRemoteEnvironment(String host, int port, int parallelism, String... jarFiles)
@@ -242,8 +245,7 @@ your program inside an IDE or as a regular Java program it will create
 a local environment that will execute your program on your local machine. If
 you created a JAR file from you program, and invoke it through the [command line](cli.html)
 or the [web interface](web_client.html),
-the Flink cluster manager will
-execute your main method and `getExecutionEnvironment()` will return
+the Flink cluster manager will execute your main method and `getExecutionEnvironment()` will return
 an execution environment for executing your program on a cluster.
 
 For specifying data sources the execution environment has several methods
@@ -282,8 +284,8 @@ This will create a new DataSet by converting every String in the original
 set to an Integer. For more information and a list of all the transformations,
 please refer to [Transformations](#transformations).
 
-Once you have a DataSet that needs to be written to disk you call one
-of these methods on DataSet:
+Once you have a DataSet containing your final results, you can either write the result
+to a file system (HDFS or local) or print it.
 
 {% highlight java %}
 writeAsText(String path)
@@ -291,21 +293,10 @@ writeAsCsv(String path)
 write(FileOutputFormat<T> outputFormat, String filePath)
 
 print()
+printOnTaskManager()
+
+collect()
 {% endhighlight %}
-
-The last method is only useful for developing/debugging on a local machine,
-it will output the contents of the DataSet to standard output. (Note that in
-a cluster, the result goes to the standard out stream of the cluster nodes and ends
-up in the *.out* files of the workers).
-The first two do as the name suggests, the third one can be used to specify a
-custom data output format. Please refer
-to [Data Sinks](#data-sinks) for more information on writing to files and also
-about custom data output formats.
-
-Once you specified the complete program you need to call `execute` on
-the `ExecutionEnvironment`. This will either execute on your local
-machine or submit your program for execution on a cluster, depending on
-how you created the execution environment.
 
 </div>
 <div data-lang="scala" markdown="1">
@@ -317,7 +308,7 @@ programs with a `main()` method. Each program consists of the same basic parts:
 2. Load/create the initial data,
 3. Specify transformations on this data,
 4. Specify where to put the results of your computations, and
-5. Execute your program.
+5. Trigger the program execution
 
 We will now give an overview of each of those steps but please refer to the respective sections for
 more details. Note that all core classes of the Scala API are found in the package 
@@ -331,6 +322,7 @@ obtain one using these static methods on class `ExecutionEnvironment`:
 def getExecutionEnvironment
 
 def createLocalEnvironment(parallelism: Int = Runtime.getRuntime.availableProcessors()))
+def createLocalEnvironment(customConfiguration: Configuration)
 
 def createRemoteEnvironment(host: String, port: String, jarFiles: String*)
 def createRemoteEnvironment(host: String, port: String, parallelism: Int, jarFiles: String*)
@@ -342,8 +334,7 @@ your program inside an IDE or as a regular Scala program it will create
 a local environment that will execute your program on your local machine. If
 you created a JAR file from you program, and invoke it through the [command line](cli.html)
 or the [web interface](web_client.html),
-the Flink cluster manager will
-execute your main method and `getExecutionEnvironment()` will return
+the Flink cluster manager will execute your main method and `getExecutionEnvironment()` will return
 an execution environment for executing your program on a cluster.
 
 For specifying data sources the execution environment has several methods
@@ -377,8 +368,8 @@ This will create a new DataSet by converting every String in the original
 set to an Integer. For more information and a list of all the transformations,
 please refer to [Transformations](#transformations).
 
-Once you have a DataSet that needs to be written to disk you can call one
-of these methods on DataSet:
+Once you have a DataSet containing your final results, you can either write the result
+to a file system (HDFS or local) or print it.
 
 {% highlight scala %}
 def writeAsText(path: String, writeMode: WriteMode = WriteMode.NO_OVERWRITE)
@@ -391,25 +382,70 @@ def write(outputFormat: FileOutputFormat[T],
     path: String,
     writeMode: WriteMode = WriteMode.NO_OVERWRITE)
 
+def printOnTaskManager()
+
 def print()
+
+def collect()
 {% endhighlight %}
 
-The last method is only useful for developing/debugging on a local machine,
-it will output the contents of the DataSet to standard output. (Note that in
-a cluster, the result goes to the standard out stream of the cluster nodes and ends
-up in the *.out* files of the workers).
-The first two do as the name suggests, the third one can be used to specify a
-custom data output format. Please refer
-to [Data Sinks](#data-sinks) for more information on writing to files and also
-about custom data output formats.
-
-Once you specified the complete program you need to call `execute` on
-the `ExecutionEnvironment`. This will either execute on your local
-machine or submit your program for execution on a cluster, depending on
-how you created the execution environment.
-
 </div>
 </div>
+
+
+The first two methods (`writeAsText()` and `writeAsCsv()`) do as the name suggests, the third one 
+can be used to specify a custom data output format. Please refer to [Data Sinks](#data-sinks) for 
+more information on writing to files and also about custom data output formats.
+
+The `print()` method is useful for developing/debugging. It will output the contents of the DataSet 
+to standard output (on the JVM starting the Flink execution). **NOTE** The behavior of the `print()`
+method changed with Flink 0.9.x. Before it was printing to the log file of the workers, now its 
+sending the DataSet results to the client and printing the results there.
+
+`collect()` retrieve the DataSet from the cluster to the local JVM. The `collect()` method 
+will return a `List` containing the elements.
+
+Both `print()` and `collect()` will trigger the execution of the program. You don't need to further call `execute()`.
+
+
+**NOTE** `print()` and `collect()` retrieve the data from the cluster to the client. Currently,
+the data sizes you can retrieve with `collect()` are limited due to our RPC system. It is not advised
+to collect DataSets larger than 10MBs.
+
+There is also a `printOnTaskManager()` method which will print the DataSet contents on the TaskManager 
+(so you have to get them from the log file). The `printOnTaskManager()` method will not trigger a
+program execution.
+
+Once you specified the complete program you need to **trigger the program execution**. You can call
+`execute()` directly on the `ExecutionEnviroment` or you implicitly trigger the execution with
+`collect()` or `print()`.
+Depending on the type of the `ExecutionEnvironment` the execution will be triggered on your local 
+machine or submit your program for execution on a cluster.
+
+Note that you can not call both `print()` (or `collect()`) and `execute()` at the end of program.
+
+The `execute()` method is returning the `JobExecutionResult`, including execution times and
+accumulator results. `print()` and `collect()` are not returning the result, but it can be
+accessed from the `getLastJobExecutionResult()` method.
+
+
+[Back to top](#top)
+
+
+DataSet abstraction
+---------------
+
+The batch processing APIs of Flink are centered around the `DataSet` abstraction. A `DataSet` is only
+an abstract representation of a set of data that can contain duplicates.
+
+Also note that Flink is not always physically creating (materializing) each DataSet at runtime. This 
+depends on the used runtime, the configuration and optimizer decisions.
+
+The Flink runtime does not need to always materialize the DataSets because it is using a streaming runtime model.
+
+DataSets are only materialized to avoid distributed deadlocks (at points where the data flow graph branches out and joins again later) or if the execution mode has explicitly been set to a batched execution.
+
+When using Flink on Tez, all DataSets are materialized.
 
 
 [Back to top](#top)
@@ -420,8 +456,9 @@ Lazy Evaluation
 
 All Flink programs are executed lazily: When the program's main method is executed, the data loading
 and transformations do not happen directly. Rather, each operation is created and added to the
-program's plan. The operations are actually executed when one of the `execute()` methods is invoked
-on the ExecutionEnvironment object. Whether the program is executed locally or on a cluster depends
+program's plan. The operations are actually executed when the execution is explicitly triggered by 
+an `execute()` call on the ExecutionEnvironment object. Also, `collect()` and `print()` will trigger
+the job execution. Whether the program is executed locally or on a cluster depends
 on the environment of the program.
 
 The lazy evaluation lets you construct sophisticated programs that Flink executes as one
@@ -569,7 +606,18 @@ DataSet<Tuple3<Integer, String, Double>> output = input.sum(0).andMin(2);
       </td>
     </tr>
 
+    <tr>
+      <td><strong>Distinct</strong></td>
+      <td>
+        <p>Returns the distinct elements of a data set. It removes the duplicate entries 
+        from the input DataSet, with respect to all fields of the elements, or a subset of fields.</p>
+    {% highlight java %}
+        data.distinct(); 
+    {% endhighlight %}
+      </td>
     </tr>
+    
+    <tr>
       <td><strong>Join</strong></td>
       <td>
         Joins two data sets by creating all pairs of elements that are equal on their keys.
@@ -594,7 +642,7 @@ result = input1.join(input2)
 result = input1.join(input2, JoinHint.BROADCAST_HASH_FIRST)
                .where(0).equalTo(1);
 {% endhighlight %}
-
+        Note that the join transformation works only for equi-joins. Other join types, for example outer-joins need to be expressed using CoGroup.
       </td>
     </tr>
 
@@ -628,6 +676,7 @@ DataSet<Integer> data1 = // [...]
 DataSet<String> data2 = // [...]
 DataSet<Tuple2<Integer, String>> result = data1.cross(data2);
 {% endhighlight %}
+      <p>Note: Cross is potentially a <b>very</b> compute-intensive operation which can challenge even large compute clusters! It is adviced to hint the system with the DataSet sizes by using <i>crossWithTiny()</i> and <i>crossWithHuge()</i>.</p>
       </td>
     </tr>
     <tr>
@@ -645,7 +694,7 @@ DataSet<String> result = data1.union(data2);
     <tr>
       <td><strong>Rebalance</strong></td>
       <td>
-        <p>Evenly rebalances the parallel partitions of a data set to eliminate data skew. Only Map-like transformations may follow a rebalance transformation. (Java API Only)</p>
+        <p>Evenly rebalances the parallel partitions of a data set to eliminate data skew. Only Map-like transformations may follow a rebalance transformation.</p>
 {% highlight java %}
 DataSet<String> in = // [...]
 DataSet<String> result = in.rebalance()
@@ -661,6 +710,18 @@ DataSet<String> result = in.rebalance()
 DataSet<Tuple2<String,Integer>> in = // [...]
 DataSet<Integer> result = in.partitionByHash(0)
                             .mapPartition(new PartitionMapper());
+{% endhighlight %}
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Custom Partitioning</strong></td>
+      <td>
+        <p>Manually specify a partitioning over the data.
+          <br/>
+          <i>Note</i>: This method works only on single field keys.</p>
+{% highlight java %}
+DataSet<Tuple2<String,Integer>> in = // [...]
+DataSet<Integer> result = in.partitionCustom(Partitioner<K> partitioner, key)
 {% endhighlight %}
       </td>
     </tr>
@@ -820,6 +881,17 @@ val output: DataSet[(Int, String, Doublr)] = input.sum(0).min(2)
 {% endhighlight %}
       </td>
     </tr>
+    
+    <tr>
+      <td><strong>Distinct</strong></td>
+      <td>
+        <p>Returns the distinct elements of a data set. It removes the duplicate entries 
+        from the input DataSet, with respect to all fields of the elements, or a subset of fields.</p>
+      {% highlight scala %}
+         data.distinct() 
+      {% endhighlight %}
+      </td> 
+    </tr>
 
     </tr>
       <td><strong>Join</strong></td>
@@ -846,6 +918,7 @@ val result = input1.join(input2).where(0).equalTo(1)
 val result = input1.join(input2, JoinHint.BROADCAST_HASH_FIRST)
                    .where(0).equalTo(1)
 {% endhighlight %}
+          Note that the join transformation works only for equi-joins. Other join types, for example outer-joins need to be expressed using CoGroup.
       </td>
     </tr>
 
@@ -872,6 +945,7 @@ val data1: DataSet[Int] = // [...]
 val data2: DataSet[String] = // [...]
 val result: DataSet[(Int, String)] = data1.cross(data2)
 {% endhighlight %}
+        <p>Note: Cross is potentially a <b>very</b> compute-intensive operation which can challenge even large compute clusters! It is adviced to hint the system with the DataSet sizes by using <i>crossWithTiny()</i> and <i>crossWithHuge()</i>.</p>
       </td>
     </tr>
     <tr>
@@ -880,6 +954,16 @@ val result: DataSet[(Int, String)] = data1.cross(data2)
         <p>Produces the union of two data sets.</p>
 {% highlight scala %}
 data.union(data2)
+{% endhighlight %}
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Rebalance</strong></td>
+      <td>
+        <p>Evenly rebalances the parallel partitions of a data set to eliminate data skew. Only Map-like transformations may follow a rebalance transformation.</p>
+{% highlight scala %}
+val data1: DataSet[Int] = // [...]
+val result: DataSet[(Int, String)] = data1.rebalance().map(...)
 {% endhighlight %}
       </td>
     </tr>
@@ -894,6 +978,19 @@ val result = in.partitionByHash(0).mapPartition { ... }
 {% endhighlight %}
       </td>
     </tr>
+    </tr>
+    <tr>
+      <td><strong>Custom Partitioning</strong></td>
+      <td>
+        <p>Manually specify a partitioning over the data.
+          <br/>
+          <i>Note</i>: This method works only on single field keys.</p>
+{% highlight scala %}
+val in: DataSet[(Int, String)] = // [...]
+val result = in
+  .partitionCustom(partitioner: Partitioner[K], key)
+{% endhighlight %}
+      </td>
     </tr>
     <tr>
       <td><strong>Sort Partition</strong></td>
@@ -932,6 +1029,8 @@ val result3 = in.groupBy(0).sortGroup(1, Order.ASCENDING).first(3)
 The [parallelism](#parallel-execution) of a transformation can be defined by `setParallelism(int)` while
 `name(String)` assigns a custom name to a transformation which is helpful for debugging. The same is
 possible for [Data Sources](#data-sources) and [Data Sinks](#data-sinks).
+
+`withParameters(Configuration)` passes Configuration objects, which can be accessed from the `open()` method inside the user function.
 
 [Back to Top](#top)
 
@@ -1221,7 +1320,7 @@ data.map(new MapFunction<String, Integer> () {
 
 #### Java 8 Lambdas
 
-Flink also supports Java 8 Lambdas in the Java API. Please see the full [Java 8 Guide](java8_programming_guide.html).
+Flink also supports Java 8 Lambdas in the Java API. Please see the full [Java 8 Guide](java8.html).
 
 {% highlight java %}
 DataSet<String> data = // [...]
@@ -1511,7 +1610,7 @@ You can use types that implement the `org.apache.hadoop.Writable` interface. The
 defined in the `write()`and `readFields()` methods will be used for serialization.
 
 
-#### Type Erasure & Type Inferrence
+#### Type Erasure & Type Inference
 
 *Note: This Section is only relevant for Java.*
 
@@ -1536,6 +1635,22 @@ The
 interface can be implemented by input formats and functions to tell the API
 explicitly about their return type. The *input types* that the functions are invoked with can
 usually be inferred by the result types of the previous operations.
+
+
+#### Object reuse behavior
+
+Apache Flink is trying to reduce the number of object allocations for better performance.
+
+By default, user defined functions (like `map()` or `groupReduce()`) are getting new objects on each call (or through an iterator). So it is possible to keep references to the objects inside the function (for example in a List).
+
+User defined functions are often chained, for example when two mappers with the same parallelism are defined one after another. In the chaining case, the functions in the chain are receiving the same object instances. So the the second `map()` function is receiving the objects the first `map()` is returning.
+This behavior can lead to errors when the first `map()` function keeps a list of all objects and the second mapper is modifying objects. In that case, the user has to manually create copies of the objects before putting them into the list.
+
+Also note that the system assumes that the user is not modifying the incoming objects in the `filter()` function.
+
+There is a switch at the `ExectionConfig` which allows users to enable the object reuse mode (`enableObjectReuse()`). For mutable types, Flink will reuse object instances. In practice that means that a `map()` function will always receive the same object instance (with its fields set to new values). The object reuse mode will lead to better performance because fewer objects are created, but the user has to manually take care of what they are doing with the object references.
+
+
 
 [Back to top](#top)
 
@@ -1642,6 +1757,7 @@ DataSet<Tuple2<String, Integer> dbData =
 Flink offers a number of configuration options for CSV parsing:
 
 - `types(Class ... types)` specifies the types of the fields to parse. **It is mandatory to configure the types of the parsed fields.**
+  In case of the type class Boolean.class, "True" (case-insensitive), "False" (case-insensitive), "1" and "0" are treated as booleans.
 
 - `lineDelimiter(String del)` specifies the delimiter of individual records. The default line delimiter is the new-line character `'\n'`.
 
@@ -1799,6 +1915,102 @@ env.readTextFile("file:///path/with.nested/files").withParameters(parameters)
 
 </div>
 </div>
+
+### Read Compressed Files
+
+Flink currently supports transparent decompression of input files if these are marked with an appropriate file extension. In particular, this means that no further configuration of the input formats is necessary and any `FileInputFormat` support the compression, including custom input formats. Please notice that compressed files might not be read in parallel, thus impacting job scalability.
+
+The following table lists the currently supported compression methods.
+
+<br />
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th class="text-left" style="width: 20%">Compression method</th>
+      <th class="text-left">File extensions</th>
+      <th class="text-left" style="width: 20%">Parallelizable</th>
+    </tr>
+  </thead>
+
+  <tbody>
+    <tr>
+      <td><strong>DEFLATE</strong></td>
+      <td>`.deflate`</td>
+      <td>no</td>
+    </tr>
+    <tr>
+      <td><strong>GZip</strong></td>
+      <td>`.gz`, `.gzip`</td>
+      <td>no</td>
+    </tr>
+  </tbody>
+</table>
+
+
+[Back to top](#top)
+
+
+Execution Configuration
+----------
+
+The `ExecutionEnvironment` also contains the `ExecutionConfig` which allows to set job specific configuration values for the runtime.
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+ExecutionConfig executionConfig = env.getConfig();
+{% endhighlight %}
+</div>
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val env = ExecutionEnvironment.getExecutionEnvironment
+var executionConfig = env.getConfig
+{% endhighlight %}
+</div>
+</div>
+
+The following configuration options are available: (the default is bold)
+
+- **`enableClosureCleaner()`** / `disableClosureCleaner()`. The closure cleaner is enabled by default. The closure cleaner removes unneeded references to the surrounding class of anonymous functions inside Flink programs.
+With the closure cleaner disabled, it might happen that an anonymous user function is referencing the surrounding class, which is usually not Serializable. This will lead to exceptions by the serializer.
+
+- `getParallelism()` / `setParallelism(int parallelism)` Set the default parallelism for the job.
+
+- `getNumberOfExecutionRetries()` / `setNumberOfExecutionRetries(int numberOfExecutionRetries)` Sets the number of times that failed tasks are re-executed. A value of zero effectively disables fault tolerance. A value of `-1` indicates that the system default value (as defined in the configuration) should be used.
+
+- `getExecutionMode()` / `setExecutionMode()`. The default execution mode is PIPELINED. Sets the execution mode to execute the program. The execution mode defines whether data exchanges are performed in a batch or on a pipelined manner. 
+
+- `enableForceKryo()` / **`disableForceKryo`**. Kryo is not forced by default. Forces the GenericTypeInformation to use the Kryo serializer for POJOS even though we could analyze them as a POJO. In some cases this might be preferable. For example, when Flink's internal serializers fail to handle a POJO properly.
+
+- `enableForceAvro()` / **`disableForceAvro()`**. Avro is not forced by default. Forces the Flink AvroTypeInformation to use the Avro serializer instead of Kryo for serializing Avro POJOs.
+
+- `enableObjectReuse()` / **`disableObjectReuse()`** By default, objects are not reused in Flink. Enabling the [object reuse mode](programming_guide.html#object-reuse-behavior) will instruct the runtime to reuse user objects for better performance. Keep in mind that this can lead to bugs when the user-code function of an operation is not aware of this behavior. 
+
+- **`enableSysoutLogging()`** / `disableSysoutLogging()` JobManager status updates are printed to `System.out` by default. This setting allows to disable this behavior.
+
+- `getGlobalJobParameters()` / `setGlobalJobParameters()` This method allows users to set custom objects as a global configuration for the job. Since the `ExecutionConfig` is accessible in all user defined functions, this is an easy method for making configuration globally available in a job.
+
+- `addDefaultKryoSerializer(Class<?> type, Serializer<?> serializer)` Register a Kryo serializer instance for the given `type`.
+
+- `addDefaultKryoSerializer(Class<?> type, Class<? extends Serializer<?>> serializerClass)` Register a Kryo serializer class for the given `type`.
+
+- `registerTypeWithKryoSerializer(Class<?> type, Serializer<?> serializer)` Register the given type with Kryo and specify a serializer for it. By registering a type with Kryo, the serialization of the type will be much more efficient.
+
+- `registerKryoType(Class<?> type)` If the type ends up being serialized with Kryo, then it will be registered at Kryo to make sure that only tags (integer IDs) are written. If a type is not registered with Kryo, its entire class-name will be serialized with every instance, leading to much higher I/O costs.
+
+- `registerPojoType(Class<?> type)` Registers the given type with the serialization stack. If the type is eventually serialized as a POJO, then the type is registered with the POJO serializer. If the type ends up being serialized with Kryo, then it will be registered at Kryo to make sure that only tags are written. If a type is not registered with Kryo, its entire class-name will be serialized with every instance, leading to much higher I/O costs. 
+
+Note that types registered with `registerKryoType()` are not available to Flink's Kryo serializer instance.
+
+- `disableAutoTypeRegistration()` Automatic type registration is enabled by default. The automatic type registration is registering all types (including sub-types) used by usercode with Kryo and the POJO serializer.
+
+
+
+The `RuntimeContext` which is accessible in `Rich*` functions through the `getRuntimeContext()` method also allows to access the `ExecutionConfig` in all user defined functions.
+
+
 [Back to top](#top)
 
 Data Sinks
@@ -2588,8 +2800,9 @@ of a function, or use the `withParameters(...)` method to pass in a configuratio
 Passing Parameters to Functions
 -------------------
 
-Parameters can be passed to functions using either the constructor or the `withParameters(Configuration)` method. The parameters are serialized
-as part of the function object and shipped to all parallel task instances.
+Parameters can be passed to functions using either the constructor or the `withParameters(Configuration)` method. The parameters are serialized as part of the function object and shipped to all parallel task instances.
+
+Check also the [best practices guide on how to pass command line arguments to functions](best_practices.html#parsing-command-line-arguments-and-passing-them-around-in-your-flink-application).
 
 #### Via Constructor
 
@@ -2679,6 +2892,54 @@ toFilter.filter(new RichFilterFunction[Int]() {
 {% endhighlight %}
 </div>
 </div>
+
+#### Globally via the `ExecutionConfig`
+
+Flink also allows to pass custom configuration values to the `ExecutionConfig` interface of the environment. Since the execution config is accessible in all (rich) user functions, the custom configuration will be available globally in all functions.
+
+
+**Setting a custom global configuration**
+
+<div class="codetabs" markdown="1">
+<div data-lang="java" markdown="1">
+{% highlight java %}
+
+Configuration conf = new Configuration();
+conf.setString("mykey","myvalue");
+final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+env.getConfig().setGlobalJobParameters(conf);
+{% endhighlight %}
+</div>
+<div data-lang="scala" markdown="1">
+{% highlight scala %}
+val env = ExecutionEnvironment.getExecutionEnvironment
+val conf = new Configuration()
+conf.setString("mykey", "myvalue")
+env.getConfig.setGlobalJobParameters(conf)
+{% endhighlight %}
+</div>
+</div>
+
+Please note that you can also pass a custom class extending the `ExecutionConfig.GlobalJobParameters` class as the global job parameters to the execution config. The interface allows to implement the `Map<String, String> toMap()` method which will in turn show the values from the configuration in the web frontend.
+
+
+**Accessing values from the global configuration**
+
+Objects in the global job parameters are accessible in many places in the system. All user functions implementing a `Rich*Function` interface have access through the runtime context.
+
+{% highlight java %}
+public static final class Tokenizer extends RichFlatMapFunction<String, Tuple2<String, Integer>> {
+
+    private String mykey;
+    @Override
+    public void open(Configuration parameters) throws Exception {
+      super.open(parameters);
+      ExecutionConfig.GlobalJobParameters globalParams = getRuntimeContext().getExecutionConfig().getGlobalJobParameters();
+      Configuration globConf = (Configuration) globalParams;
+      mykey = globConf.getString("mykey", null);
+    }
+    // ... more here ...
+{% endhighlight %}
 
 [Back to top](#top)
 
@@ -2836,7 +3097,7 @@ The parallelism of a task can be specified in Flink on different levels.
 
 The parallelism of an individual operator, data source, or data sink can be defined by calling its
 `setParallelism()` method.  For example, the parallelism of the `Sum` operator in the
-[WordCount](#example-program) example program can be set to `5` as follows :
+[WordCount](examples.html#word-count) example program can be set to `5` as follows :
 
 
 <div class="codetabs" markdown="1">
@@ -2970,7 +3231,7 @@ try {
 
 A system-wide default parallelism for all execution environments can be defined by setting the
 `parallelism.default` property in `./conf/flink-conf.yaml`. See the
-[Configuration](config.html) documentation for details.
+[Configuration]({{ site.baseurl }}/setup/config.html) documentation for details.
 
 [Back to top](#top)
 

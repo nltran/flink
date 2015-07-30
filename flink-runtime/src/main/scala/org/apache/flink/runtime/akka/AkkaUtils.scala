@@ -41,8 +41,6 @@ object AkkaUtils {
 
   val INF_TIMEOUT = 21474835 seconds
 
-  var globalExecutionContext: ExecutionContext = ExecutionContext.global
-
   /**
    * Creates a local actor system without remoting.
    *
@@ -64,8 +62,10 @@ object AkkaUtils {
    *                         parameter is None, then a local actor system will be created.
    * @return created actor system
    */
-  def createActorSystem(configuration: Configuration,
-                        listeningAddress: Option[(String, Int)]): ActorSystem = {
+  def createActorSystem(
+      configuration: Configuration,
+      listeningAddress: Option[(String, Int)])
+    : ActorSystem = {
     val akkaConfig = getAkkaConfig(configuration, listeningAddress)
     createActorSystem(akkaConfig)
   }
@@ -139,6 +139,13 @@ object AkkaUtils {
     val lifecycleEvents = configuration.getBoolean(ConfigConstants.AKKA_LOG_LIFECYCLE_EVENTS,
       ConfigConstants.DEFAULT_AKKA_LOG_LIFECYCLE_EVENTS)
 
+    val jvmExitOnFatalError = if (
+      configuration.getBoolean(ConfigConstants.AKKA_JVM_EXIT_ON_FATAL_ERROR, false)){
+      "on"
+    } else {
+      "off"
+    }
+
     val logLifecycleEvents = if (lifecycleEvents) "on" else "off"
 
     val logLevel = getLogLevel
@@ -152,7 +159,7 @@ object AkkaUtils {
         | logging-filter = "akka.event.slf4j.Slf4jLoggingFilter"
         | log-config-on-start = off
         |
-        | jvm-exit-on-fatal-error = off
+        | jvm-exit-on-fatal-error = $jvmExitOnFatalError
         |
         | serialize-messages = off
         |

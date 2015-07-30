@@ -18,24 +18,27 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public class StreamSink<IN> extends ChainableStreamOperator<IN, IN> {
+public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFunction<IN>>
+		implements OneInputStreamOperator<IN, Object> {
+
 	private static final long serialVersionUID = 1L;
 
 	public StreamSink(SinkFunction<IN> sinkFunction) {
 		super(sinkFunction);
+
+		chainingStrategy = ChainingStrategy.ALWAYS;
 	}
 
 	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
-		}
+	public void processElement(StreamRecord<IN> element) throws Exception {
+		userFunction.invoke(element.getValue());
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	protected void callUserFunction() throws Exception {
-		((SinkFunction<IN>) userFunction).invoke(nextObject);
+	public void processWatermark(Watermark mark) throws Exception {
+		// ignore it for now, we are a sink, after all
 	}
 }

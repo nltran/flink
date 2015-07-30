@@ -21,6 +21,7 @@ package org.apache.flink.yarn;
 import org.apache.commons.io.FileUtils;
 import org.apache.flink.client.CliFrontend;
 import org.apache.flink.client.FlinkYarnSessionCli;
+import org.apache.flink.test.util.TestBaseUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.service.Service;
 import org.apache.hadoop.yarn.api.records.ApplicationReport;
@@ -51,9 +52,7 @@ import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.lang.reflect.Field;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,10 +79,15 @@ public abstract class YarnTestBase {
 
 	protected final static int NUM_NODEMANAGERS = 2;
 
-	// The tests are scanning for these strings in the final output.
+	/** The tests are scanning for these strings in the final output. */
 	protected final static String[] PROHIBITED_STRINGS = {
 			"Exception", // we don't want any exceptions to happen
 			"Started SelectChannelConnector@0.0.0.0:8081" // Jetty should start on a random port in YARN mode.
+	};
+
+	/** These strings are white-listed, overriding teh prohibited strings */
+	protected final static String[] WHITELISTED_STRINGS = {
+			"akka.remote.RemoteTransportExceptionNoStackTrace"
 	};
 
 	// Temp directory which is deleted after the unit test.
@@ -111,41 +115,7 @@ public abstract class YarnTestBase {
 		yarnConfiguration.setInt(YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS, 20000); // 20 seconds expiry (to ensure we properly heartbeat with YARN).
 	}
 
-	// This code is taken from: http://stackoverflow.com/a/7201825/568695
-	// it changes the environment variables of this JVM. Use only for testing purposes!
-	@SuppressWarnings("unchecked")
-	private static void setEnv(Map<String, String> newenv) {
-		try {
-			Class<?> processEnvironmentClass = Class.forName("java.lang.ProcessEnvironment");
-			Field theEnvironmentField = processEnvironmentClass.getDeclaredField("theEnvironment");
-			theEnvironmentField.setAccessible(true);
-			Map<String, String> env = (Map<String, String>) theEnvironmentField.get(null);
-			env.putAll(newenv);
-			Field theCaseInsensitiveEnvironmentField = processEnvironmentClass.getDeclaredField("theCaseInsensitiveEnvironment");
-			theCaseInsensitiveEnvironmentField.setAccessible(true);
-			Map<String, String> cienv = (Map<String, String>) theCaseInsensitiveEnvironmentField.get(null);
-			cienv.putAll(newenv);
-		} catch (NoSuchFieldException e) {
-			try {
-				Class[] classes = Collections.class.getDeclaredClasses();
-				Map<String, String> env = System.getenv();
-				for (Class cl : classes) {
-					if ("java.util.Collections$UnmodifiableMap".equals(cl.getName())) {
-						Field field = cl.getDeclaredField("m");
-						field.setAccessible(true);
-						Object obj = field.get(env);
-						Map<String, String> map = (Map<String, String>) obj;
-						map.clear();
-						map.putAll(newenv);
-					}
-				}
-			} catch (Exception e2) {
-				throw new RuntimeException(e2);
-			}
-		} catch (Exception e1) {
-			throw new RuntimeException(e1);
-		}
-	}
+
 
 	/**
 	 * Sleep a bit between the tests (we are re-using the YARN cluster for the tests)
@@ -267,10 +237,11 @@ public abstract class YarnTestBase {
 	 * So always run "mvn clean" before running the tests here.
 	 *
 	 */
-	public static void ensureNoProhibitedStringInLogFiles(final String[] prohibited) {
+	public static void ensureNoProhibitedStringInLogFiles(final String[] prohibited, final String[] whitelisted) {
 		File cwd = new File("target/"+yarnConfiguration.get(TEST_CLUSTER_NAME_KEY));
 		Assert.assertTrue("Expecting directory "+cwd.getAbsolutePath()+" to exist", cwd.exists());
 		Assert.assertTrue("Expecting directory "+cwd.getAbsolutePath()+" to be a directory", cwd.isDirectory());
+		
 		File foundFile = findFile(cwd.getAbsolutePath(), new FilenameFilter() {
 			@Override
 			public boolean accept(File dir, String name) {
@@ -282,10 +253,21 @@ public abstract class YarnTestBase {
 					final String lineFromFile = scanner.nextLine();
 					for (String aProhibited : prohibited) {
 						if (lineFromFile.contains(aProhibited)) {
-							// logging in FATAL to see the actual message in TRAVIS tests.
-							Marker fatal = MarkerFactory.getMarker("FATAL");
-							LOG.error(fatal, "Prohibited String '{}' in line '{}'", aProhibited, lineFromFile);
-							return true;
+							
+							boolean whitelistedFound = false;
+							for (String white : whitelisted) {
+								if (lineFromFile.contains(white)) {
+									whitelistedFound = true;
+									break;
+								}
+							}
+							
+							if (!whitelistedFound) {
+								// logging in FATAL to see the actual message in TRAVIS tests.
+								Marker fatal = MarkerFactory.getMarker("FATAL");
+								LOG.error(fatal, "Prohibited String '{}' in line '{}'", aProhibited, lineFromFile);
+								return true;
+							}
 						}
 					}
 
@@ -366,7 +348,7 @@ public abstract class YarnTestBase {
 			File yarnConfFile = writeYarnSiteConfigXML(conf);
 			map.put("YARN_CONF_DIR", yarnConfFile.getParentFile().getAbsolutePath());
 			map.put("IN_TESTS", "yes we are in tests"); // see FlinkYarnClient() for more infos
-			setEnv(map);
+			TestBaseUtils.setEnv(map);
 
 			Assert.assertTrue(yarnCluster.getServiceState() == Service.STATE.STARTED);
 		} catch (Exception ex) {
@@ -471,20 +453,25 @@ public abstract class YarnTestBase {
 				expectedStringSeen = true;
 				LOG.info("Found expected output in redirected streams");
 				// send "stop" command to command line interface
+				LOG.info("RunWithArgs: request runner to stop");
 				runner.sendStop();
 				// wait for the thread to stop
 				try {
-					runner.join(1000);
+					runner.join(10000);
 				} catch (InterruptedException e) {
-					LOG.warn("Interrupted while stopping runner", e);
+					LOG.debug("Interrupted while stopping runner", e);
 				}
-				LOG.warn("stopped");
+				LOG.warn("RunWithArgs runner stopped.");
 				break;
 			}
 			// check if thread died
 			if(!runner.isAlive()) {
 				sendOutput();
-				Assert.fail("Runner thread died before the test was finished. Return value = " +runner.getReturnValue());
+				if(runner.getReturnValue() != 0) {
+					Assert.fail("Runner thread died before the test was finished. Return value = " + runner.getReturnValue());
+				} else {
+					LOG.info("Runner stopped earlier than expected with return value = 0");
+				}
 			}
 		}
 		sendOutput();

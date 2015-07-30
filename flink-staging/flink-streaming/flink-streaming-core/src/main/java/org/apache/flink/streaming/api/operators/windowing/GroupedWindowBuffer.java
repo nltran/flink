@@ -17,6 +17,8 @@
 
 package org.apache.flink.streaming.api.operators.windowing;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,6 +26,7 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.streaming.api.windowing.StreamWindow;
 import org.apache.flink.streaming.api.windowing.WindowEvent;
 import org.apache.flink.streaming.api.windowing.windowbuffer.WindowBuffer;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
  * This operator flattens the results of the window transformations by
@@ -32,25 +35,26 @@ import org.apache.flink.streaming.api.windowing.windowbuffer.WindowBuffer;
 public class GroupedWindowBuffer<T> extends StreamWindowBuffer<T> {
 
 	private static final long serialVersionUID = 1L;
-	private Map<Object, WindowBuffer<T>> windowMap = new HashMap<Object, WindowBuffer<T>>();
+
 	private KeySelector<T, ?> keySelector;
+
+	private transient Map<Object, WindowBuffer<T>> windowMap;
 
 	public GroupedWindowBuffer(WindowBuffer<T> buffer, KeySelector<T, ?> keySelector) {
 		super(buffer);
 		this.keySelector = keySelector;
+		this.windowMap = new HashMap<Object, WindowBuffer<T>>();
+	}
+
+	private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+		in.defaultReadObject();
+		this.windowMap = new HashMap<Object, WindowBuffer<T>>();
 	}
 
 	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
-		}
-	}
-
-	@Override
-	protected void callUserFunction() throws Exception {
-		if (nextObject.getElement() != null) {
-			Object key = keySelector.getKey(nextObject.getElement());
+	public void processElement(StreamRecord<WindowEvent<T>> event) throws Exception {
+		if (event.getValue().getElement() != null) {
+			Object key = keySelector.getKey(event.getValue().getElement());
 			WindowBuffer<T> currentWindow = windowMap.get(key);
 
 			if (currentWindow == null) {
@@ -58,15 +62,7 @@ public class GroupedWindowBuffer<T> extends StreamWindowBuffer<T> {
 				windowMap.put(key, currentWindow);
 			}
 
-			handleWindowEvent(nextObject, currentWindow);
-		}
-	}
-
-	@Override
-	public void collect(WindowEvent<T> record) {
-		if (isRunning) {
-			nextObject = record;
-			callUserFunctionAndLogException();
+			handleWindowEvent(event.getValue(), currentWindow);
 		}
 	}
 

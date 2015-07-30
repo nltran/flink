@@ -18,14 +18,25 @@
 package org.apache.flink.streaming.api.operators.co;
 
 import org.apache.flink.streaming.api.functions.co.CoReduceFunction;
+import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public class CoStreamReduce<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OUT> {
+public class CoStreamReduce<IN1, IN2, OUT>
+		extends AbstractUdfStreamOperator<OUT, CoReduceFunction<IN1, IN2, OUT>>
+		implements TwoInputStreamOperator<IN1, IN2, OUT> {
+
 	private static final long serialVersionUID = 1L;
 
 	protected IN1 currentValue1 = null;
 	protected IN2 currentValue2 = null;
-	protected IN1 nextValue1 = null;
-	protected IN2 nextValue2 = null;
+
+	// We keep track of watermarks from both inputs, the combined input is the minimum
+	// Once the minimum advances we emit a new watermark for downstream operators
+	private long combinedWatermark = Long.MIN_VALUE;
+	private long input1Watermark = Long.MAX_VALUE;
+	private long input2Watermark = Long.MAX_VALUE;
 
 	public CoStreamReduce(CoReduceFunction<IN1, IN2, OUT> coReducer) {
 		super(coReducer);
@@ -34,39 +45,42 @@ public class CoStreamReduce<IN1, IN2, OUT> extends CoStreamOperator<IN1, IN2, OU
 	}
 
 	@Override
-	public void handleStream1() throws Exception {
-		nextValue1 = reuse1.getObject();
-		callUserFunctionAndLogException1();
-	}
-
-	@Override
-	public void handleStream2() throws Exception {
-		nextValue2 = reuse2.getObject();
-		callUserFunctionAndLogException2();
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	protected void callUserFunction1() throws Exception {
-		CoReduceFunction<IN1, IN2, OUT> coReducer = (CoReduceFunction<IN1, IN2, OUT>) userFunction;
+	public void processElement1(StreamRecord<IN1> element) throws Exception {
 		if (currentValue1 != null) {
-			currentValue1 = coReducer.reduce1(currentValue1, nextValue1);
+			currentValue1 = userFunction.reduce1(currentValue1, element.getValue());
 		} else {
-			currentValue1 = nextValue1;
+			currentValue1 = element.getValue();
 		}
-		collector.collect(coReducer.map1(currentValue1));
+		output.collect(element.replace(userFunction.map1(currentValue1)));
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	protected void callUserFunction2() throws Exception {
-		CoReduceFunction<IN1, IN2, OUT> coReducer = (CoReduceFunction<IN1, IN2, OUT>) userFunction;
+	public void processElement2(StreamRecord<IN2> element) throws Exception {
 		if (currentValue2 != null) {
-			currentValue2 = coReducer.reduce2(currentValue2, nextValue2);
+			currentValue2 = userFunction.reduce2(currentValue2, element.getValue());
 		} else {
-			currentValue2 = nextValue2;
+			currentValue2 = element.getValue();
 		}
-		collector.collect(coReducer.map2(currentValue2));
+		output.collect(element.replace(userFunction.map2(currentValue2)));
 	}
 
+	@Override
+	public void processWatermark1(Watermark mark) throws Exception {
+		input1Watermark = mark.getTimestamp();
+		long newMin = Math.min(input1Watermark, input2Watermark);
+		if (newMin > combinedWatermark && input1Watermark != Long.MAX_VALUE && input2Watermark != Long.MAX_VALUE) {
+			combinedWatermark = newMin;
+			output.emitWatermark(new Watermark(combinedWatermark));
+		}
+	}
+
+	@Override
+	public void processWatermark2(Watermark mark) throws Exception {
+		input2Watermark = mark.getTimestamp();
+		long newMin = Math.min(input1Watermark, input2Watermark);
+		if (newMin > combinedWatermark && input1Watermark != Long.MAX_VALUE && input2Watermark != Long.MAX_VALUE) {
+			combinedWatermark = newMin;
+			output.emitWatermark(new Watermark(combinedWatermark));
+		}
+	}
 }

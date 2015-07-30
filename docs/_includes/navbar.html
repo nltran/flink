@@ -31,7 +31,7 @@ under the License.
             <span class="icon-bar"></span>
           </button>
           <div class="navbar-logo">
-            <a href="{{ site.baseurl }}/"><img alt="Apache Flink" src="{{ site.baseurl }}/page/img/navbar-brand-logo.jpg"></a>
+            <a href="http://flink.apache.org"><img alt="Apache Flink" src="{{ site.baseurl }}/page/img/navbar-brand-logo.jpg"></a>
           </div>
         </div><!-- /.navbar-header -->
 
@@ -44,7 +44,7 @@ under the License.
             <li class="dropdown{% if page.url contains setup %} active{% endif %}">
               <a href="{{ setup }}" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">Setup <span class="caret"></span></a>
               <ul class="dropdown-menu" role="menu">
-                <li><a href="{{ setup }}/building.html">Get Flink 0.9-SNAPSHOT</a></li>
+                <li><a href="{{ setup }}/building.html">Get Flink {{ site.version }}</a></li>
 
                 <li class="divider"></li>
                 <li role="presentation" class="dropdown-header"><strong>Deployment</strong></li>
@@ -53,6 +53,7 @@ under the License.
                 <li><a href="{{ setup }}/yarn_setup.html">YARN</a></li>
                 <li><a href="{{ setup }}/gce_setup.html">GCloud</a></li>
                 <li><a href="{{ setup }}/flink_on_tez.html">Flink on Tez <span class="badge">Beta</span></a></li>
+                <li><a href="{{ setup }}/jobmanager_high_availability.html">JobManager High Availability<a></li>
 
                 <li class="divider"></li>
                 <li><a href="{{ setup }}/config.html">Configuration</a></li>
@@ -66,9 +67,11 @@ under the License.
                 <li><a href="{{ apis }}/programming_guide.html"><strong>Batch: DataSet API</strong></a></li>
                 <li><a href="{{ apis }}/streaming_guide.html"><strong>Streaming: DataStream API</strong> <span class="badge">Beta</span></a></li>
                 <li><a href="{{ apis }}/python.html">Python API <span class="badge">Beta</span></a></li>
-                
+
                 <li class="divider"></li>
+                <li><a href="scala_shell.html">Interactive Scala Shell</a></li>
                 <li><a href="{{ apis }}/dataset_transformations.html">Dataset Transformations</a></li>
+                <li><a href="{{ apis }}/best_practices.html">Best Practices</a></li>
                 <li><a href="{{ apis }}/example_connectors.html">Connectors</a></li>
                 <li><a href="{{ apis }}/examples.html">Examples</a></li>
                 <li><a href="{{ apis }}/local_execution.html">Local Execution</a></li>
@@ -78,6 +81,7 @@ under the License.
                 <li><a href="{{ apis }}/iterations.html">Iterations</a></li>
                 <li><a href="{{ apis }}/java8.html">Java 8</a></li>
                 <li><a href="{{ apis }}/hadoop_compatibility.html">Hadoop Compatability <span class="badge">Beta</span></a></li>
+                <li><a href="{{ apis }}/storm_compatibility.html">Storm Compatability <span class="badge">Beta</span></a></li>
               </ul>
             </li>
 
@@ -104,13 +108,14 @@ under the License.
                 <li class="divider"></li>
                 <li role="presentation" class="dropdown-header"><strong>Internals</strong></li>
                 <li><a href="{{ internals }}/general_arch.html">Architecture &amp; Process Model</a></li>
+                <li><a href="{{ internals }}/stream_checkpointing.html">Fault Tolerance for Data Streaming</a></li>
                 <li><a href="{{ internals }}/types_serialization.html">Type Extraction &amp; Serialization</a></li>
                 <li><a href="{{ internals }}/job_scheduling.html">Jobs &amp; Scheduling</a></li>
                 <li><a href="{{ internals }}/add_operator.html">How-To: Add an Operator</a></li>
               </ul>
             </li>
           </ul>
-          <form class="navbar-form navbar-right hidden-sm hidden-md" role="search" action="search-results.html">
+          <form class="navbar-form navbar-right hidden-sm hidden-md" role="search" action="{{site.baseurl}}/search-results.html">
             <div class="form-group">
               <input type="text" class="form-control" name="q" placeholder="Search all pages">
             </div>

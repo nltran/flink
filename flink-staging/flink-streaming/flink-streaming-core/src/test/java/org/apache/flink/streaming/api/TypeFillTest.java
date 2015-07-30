@@ -72,11 +72,6 @@ public class TypeFillTest {
 		} catch (Exception e) {
 		}
 		try {
-			source.connect(source).reduce(new TestCoReduce<Long, Long, Integer>()).print();
-			fail();
-		} catch (Exception e) {
-		}
-		try {
 			source.connect(source).windowReduce(new TestCoWindow<Long, Long, String>(), 10, 100)
 					.print();
 			fail();
@@ -89,8 +84,7 @@ public class TypeFillTest {
 		source.connect(source).map(new TestCoMap<Long, Long, Integer>()).returns("Integer").print();
 		source.connect(source).flatMap(new TestCoFlatMap<Long, Long, Integer>())
 				.returns(BasicTypeInfo.INT_TYPE_INFO).print();
-		source.connect(source).reduce(new TestCoReduce<Long, Long, Integer>())
-				.returns(Integer.class).print();
+		
 		source.connect(source).windowReduce(new TestCoWindow<Long, Long, String>(), 10, 100)
 				.returns("String").print();
 
@@ -115,16 +109,17 @@ public class TypeFillTest {
 	}
 
 	private class TestSource<T> implements SourceFunction<T> {
+		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void run(Collector<T> collector) throws Exception {
+		public void run(SourceContext<T> ctx) throws Exception {
 
 		}
 
 		@Override
 		public void cancel() {
-		}
 
+		}
 	}
 
 	private class TestMap<T, O> implements MapFunction<T, O> {

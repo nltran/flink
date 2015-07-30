@@ -18,28 +18,34 @@
 
 package org.apache.flink.graph.gsa;
 
-import org.apache.commons.lang3.Validate;
+import org.apache.flink.api.common.aggregators.Aggregator;
 import org.apache.flink.api.common.functions.FlatJoinFunction;
 import org.apache.flink.api.common.functions.RichFlatJoinFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RichReduceFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFields;
 import org.apache.flink.api.java.functions.FunctionAnnotation.ForwardedFieldsSecond;
 import org.apache.flink.api.java.operators.CustomUnaryOperation;
 import org.apache.flink.api.java.operators.DeltaIteration;
 import org.apache.flink.api.java.operators.JoinOperator;
+import org.apache.flink.api.java.operators.MapOperator;
+import org.apache.flink.api.java.operators.ReduceOperator;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.graph.Edge;
+import org.apache.flink.graph.EdgeDirection;
+import org.apache.flink.graph.Graph;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.util.Collector;
+import java.util.Map;
 
-import java.io.Serializable;
+import com.google.common.base.Preconditions;
 
 /**
  * This class represents iterative graph computations, programmed in a gather-sum-apply perspective.
@@ -49,8 +55,7 @@ import java.io.Serializable;
  * @param <EV> The type of the edge value in the graph
  * @param <M> The intermediate type used by the gather, sum and apply functions
  */
-public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
-		VV extends Serializable, EV extends Serializable, M> implements CustomUnaryOperation<Vertex<K, VV>,
+public class GatherSumApplyIteration<K, VV, EV, M> implements CustomUnaryOperation<Vertex<K, VV>,
 		Vertex<K, VV>> {
 
 	private DataSet<Vertex<K, VV>> vertexDataSet;
@@ -60,17 +65,20 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 	private final SumFunction<VV, EV, M> sum;
 	private final ApplyFunction<K, VV, M> apply;
 	private final int maximumNumberOfIterations;
+	private EdgeDirection direction = EdgeDirection.OUT;
+
+	private GSAConfiguration configuration;
 
 	// ----------------------------------------------------------------------------------
 
 	private GatherSumApplyIteration(GatherFunction<VV, EV, M> gather, SumFunction<VV, EV, M> sum,
 			ApplyFunction<K, VV, M> apply, DataSet<Edge<K, EV>> edges, int maximumNumberOfIterations) {
 
-		Validate.notNull(gather);
-		Validate.notNull(sum);
-		Validate.notNull(apply);
-		Validate.notNull(edges);
-		Validate.isTrue(maximumNumberOfIterations > 0, "The maximum number of iterations must be at least one.");
+		Preconditions.checkNotNull(gather);
+		Preconditions.checkNotNull(sum);
+		Preconditions.checkNotNull(apply);
+		Preconditions.checkNotNull(edges);
+		Preconditions.checkArgument(maximumNumberOfIterations > 0, "The maximum number of iterations must be at least one.");
 
 		this.gather = gather;
 		this.sum = sum;
@@ -112,6 +120,23 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 		TypeInformation<Tuple2<K, M>> innerType = new TupleTypeInfo<Tuple2<K, M>>(keyType, messageType);
 		TypeInformation<Vertex<K, VV>> outputType = vertexDataSet.getType();
 
+		// create a graph
+		Graph<K, VV, EV> graph =
+				Graph.fromDataSet(vertexDataSet, edgeDataSet, ExecutionEnvironment.getExecutionEnvironment());
+
+		// check whether the numVertices option is set and, if so, compute the total number of vertices
+		// and set it within the gather, sum and apply functions
+		if (this.configuration != null && this.configuration.isOptNumVertices()) {
+			try {
+				long numberOfVertices = graph.numberOfVertices();
+				gather.setNumberOfVertices(numberOfVertices);
+				sum.setNumberOfVertices(numberOfVertices);
+				apply.setNumberOfVertices(numberOfVertices);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
 		// Prepare UDFs
 		GatherUdf<K, VV, EV, M> gatherUdf = new GatherUdf<K, VV, EV, M>(gather, innerType);
 		SumUdf<K, VV, EV, M> sumUdf = new SumUdf<K, VV, EV, M>(sum, innerType);
@@ -121,19 +146,93 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 		final DeltaIteration<Vertex<K, VV>, Vertex<K, VV>> iteration =
 				vertexDataSet.iterateDelta(vertexDataSet, maximumNumberOfIterations, zeroKeyPos);
 
+		// set up the iteration operator
+		if (this.configuration != null) {
+
+			iteration.name(this.configuration.getName(
+					"Gather-sum-apply iteration (" + gather + " | " + sum + " | " + apply + ")"));
+			iteration.parallelism(this.configuration.getParallelism());
+			iteration.setSolutionSetUnManaged(this.configuration.isSolutionSetUnmanagedMemory());
+
+			// register all aggregators
+			for (Map.Entry<String, Aggregator<?>> entry : this.configuration.getAggregators().entrySet()) {
+				iteration.registerAggregator(entry.getKey(), entry.getValue());
+			}
+		}
+		else {
+			// no configuration provided; set default name
+			iteration.name("Gather-sum-apply iteration (" + gather + " | " + sum + " | " + apply + ")");
+		}
+
 		// Prepare the neighbors
-		DataSet<Tuple2<K, Neighbor<VV, EV>>> neighbors = iteration
+		if(this.configuration != null) {
+			direction = this.configuration.getDirection();
+		}
+		DataSet<Tuple2<K, Neighbor<VV, EV>>> neighbors;
+		switch(direction) {
+			case OUT:
+				neighbors = iteration
 				.getWorkset().join(edgeDataSet)
-				.where(0).equalTo(0).with(new ProjectKeyWithNeighbor<K, VV, EV>());
+				.where(0).equalTo(0).with(new ProjectKeyWithNeighborOUT<K, VV, EV>());
+				break;
+			case IN:
+				neighbors = iteration
+				.getWorkset().join(edgeDataSet)
+				.where(0).equalTo(1).with(new ProjectKeyWithNeighborIN<K, VV, EV>());
+				break;
+			case ALL:
+				neighbors =  iteration
+						.getWorkset().join(edgeDataSet)
+						.where(0).equalTo(0).with(new ProjectKeyWithNeighborOUT<K, VV, EV>()).union(iteration
+								.getWorkset().join(edgeDataSet)
+								.where(0).equalTo(1).with(new ProjectKeyWithNeighborIN<K, VV, EV>()));
+				break;
+			default:
+				neighbors = iteration
+						.getWorkset().join(edgeDataSet)
+						.where(0).equalTo(0).with(new ProjectKeyWithNeighborOUT<K, VV, EV>());
+				break;
+		}
 
 		// Gather, sum and apply
-		DataSet<Tuple2<K, M>> gatheredSet = neighbors.map(gatherUdf);
-		DataSet<Tuple2<K, M>> summedSet = gatheredSet.groupBy(0).reduce(sumUdf);
+		MapOperator<Tuple2<K, Neighbor<VV, EV>>, Tuple2<K, M>> gatherMapOperator = neighbors.map(gatherUdf);
+
+		// configure map gather function with name and broadcast variables
+		gatherMapOperator = gatherMapOperator.name("Gather");
+
+		if (this.configuration != null) {
+			for (Tuple2<String, DataSet<?>> e : this.configuration.getGatherBcastVars()) {
+				gatherMapOperator = gatherMapOperator.withBroadcastSet(e.f1, e.f0);
+			}
+		}
+		DataSet<Tuple2<K, M>> gatheredSet = gatherMapOperator;
+
+		ReduceOperator<Tuple2<K, M>> sumReduceOperator = gatheredSet.groupBy(0).reduce(sumUdf);
+
+		// configure reduce sum function with name and broadcast variables
+		sumReduceOperator = sumReduceOperator.name("Sum");
+
+		if (this.configuration != null) {
+			for (Tuple2<String, DataSet<?>> e : this.configuration.getSumBcastVars()) {
+				sumReduceOperator = sumReduceOperator.withBroadcastSet(e.f1, e.f0);
+			}
+		}
+		DataSet<Tuple2<K, M>> summedSet = sumReduceOperator;
+
 		JoinOperator<?, ?, Vertex<K, VV>> appliedSet = summedSet
 				.join(iteration.getSolutionSet())
 				.where(0)
 				.equalTo(0)
 				.with(applyUdf);
+
+		// configure join apply function with name and broadcast variables
+		appliedSet = appliedSet.name("Apply");
+
+		if (this.configuration != null) {
+			for (Tuple2<String, DataSet<?>> e : this.configuration.getApplyBcastVars()) {
+				appliedSet = appliedSet.withBroadcastSet(e.f1, e.f0);
+			}
+		}
 
 		// let the operator know that we preserve the key field
 		appliedSet.withForwardedFieldsFirst("0").withForwardedFieldsSecond("0");
@@ -159,10 +258,10 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 	 *
 	 * @return An in stance of the gather-sum-apply graph computation operator.
 	 */
-	public static final <K extends Comparable<K> & Serializable, VV extends Serializable, EV extends Serializable, M>
-			GatherSumApplyIteration<K, VV, EV, M> withEdges(DataSet<Edge<K, EV>> edges,
-			GatherFunction<VV, EV, M> gather, SumFunction<VV, EV, M> sum, ApplyFunction<K, VV, M> apply,
-			int maximumNumberOfIterations) {
+	public static final <K, VV, EV, M> GatherSumApplyIteration<K, VV, EV, M>
+		withEdges(DataSet<Edge<K, EV>> edges, GatherFunction<VV, EV, M> gather,
+		SumFunction<VV, EV, M> sum, ApplyFunction<K, VV, M> apply, int maximumNumberOfIterations) {
+
 		return new GatherSumApplyIteration<K, VV, EV, M>(gather, sum, apply, edges, maximumNumberOfIterations);
 	}
 
@@ -172,8 +271,7 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 
 	@SuppressWarnings("serial")
 	@ForwardedFields("f0")
-	private static final class GatherUdf<K extends Comparable<K> & Serializable, VV extends Serializable,
-			EV extends Serializable, M> extends RichMapFunction<Tuple2<K, Neighbor<VV, EV>>,
+	private static final class GatherUdf<K, VV, EV, M> extends RichMapFunction<Tuple2<K, Neighbor<VV, EV>>,
 			Tuple2<K, M>> implements ResultTypeQueryable<Tuple2<K, M>> {
 
 		private final GatherFunction<VV, EV, M> gatherFunction;
@@ -210,8 +308,7 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 	}
 
 	@SuppressWarnings("serial")
-	private static final class SumUdf<K extends Comparable<K> & Serializable, VV extends Serializable,
-			EV extends Serializable, M> extends RichReduceFunction<Tuple2<K, M>>
+	private static final class SumUdf<K, VV, EV, M> extends RichReduceFunction<Tuple2<K, M>>
 			implements ResultTypeQueryable<Tuple2<K, M>>{
 
 		private final SumFunction<VV, EV, M> sumFunction;
@@ -249,8 +346,7 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 	}
 
 	@SuppressWarnings("serial")
-	private static final class ApplyUdf<K extends Comparable<K> & Serializable,
-			VV extends Serializable, EV extends Serializable, M> extends RichFlatJoinFunction<Tuple2<K, M>,
+	private static final class ApplyUdf<K, VV, EV, M> extends RichFlatJoinFunction<Tuple2<K, M>,
 			Vertex<K, VV>, Vertex<K, VV>> implements ResultTypeQueryable<Vertex<K, VV>> {
 
 		private final ApplyFunction<K, VV, M> applyFunction;
@@ -289,8 +385,7 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 
 	@SuppressWarnings("serial")
 	@ForwardedFieldsSecond("f1->f0")
-	private static final class ProjectKeyWithNeighbor<K extends Comparable<K> & Serializable,
-			VV extends Serializable, EV extends Serializable> implements FlatJoinFunction<
+	private static final class ProjectKeyWithNeighborOUT<K, VV, EV> implements FlatJoinFunction<
 			Vertex<K, VV>, Edge<K, EV>, Tuple2<K, Neighbor<VV, EV>>> {
 
 		public void join(Vertex<K, VV> vertex, Edge<K, EV> edge, Collector<Tuple2<K, Neighbor<VV, EV>>> out) {
@@ -299,4 +394,33 @@ public class GatherSumApplyIteration<K extends Comparable<K> & Serializable,
 		}
 	}
 
+	@SuppressWarnings("serial")
+	@ForwardedFieldsSecond({"f0"})
+	private static final class ProjectKeyWithNeighborIN<K, VV, EV> implements FlatJoinFunction<
+			Vertex<K, VV>, Edge<K, EV>, Tuple2<K, Neighbor<VV, EV>>> {
+
+		public void join(Vertex<K, VV> vertex, Edge<K, EV> edge, Collector<Tuple2<K, Neighbor<VV, EV>>> out) {
+			out.collect(new Tuple2<K, Neighbor<VV, EV>>(
+					edge.getSource(), new Neighbor<VV, EV>(vertex.getValue(), edge.getValue())));
+		}
+	}
+
+
+
+
+	/**
+	 * Configures this gather-sum-apply iteration with the provided parameters.
+	 *
+	 * @param parameters the configuration parameters
+	 */
+	public void configure(GSAConfiguration parameters) {
+		this.configuration = parameters;
+	}
+
+	/**
+	 * @return the configuration parameters of this gather-sum-apply iteration
+	 */
+	public GSAConfiguration getIterationConfiguration() {
+		return this.configuration;
+	}
 }

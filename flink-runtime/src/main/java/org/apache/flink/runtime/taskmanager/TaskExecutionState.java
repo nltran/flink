@@ -18,12 +18,13 @@
 
 package org.apache.flink.runtime.taskmanager;
 
-import java.io.IOException;
 import java.util.Arrays;
 
+import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.InstantiationUtil;
 
 /**
@@ -52,8 +53,11 @@ public class TaskExecutionState implements java.io.Serializable {
 	// class may not be part of the system class loader.
 	private transient Throwable cachedError;
 
+	/** Serialized flink and user-defined accumulators */
+	private final AccumulatorSnapshot accumulators;
+
 	/**
-	 * Creates a new task execution state update, with no attached exception.
+	 * Creates a new task execution state update, with no attached exception and no accumulators.
 	 *
 	 * @param jobID
 	 *        the ID of the job the task belongs to
@@ -63,12 +67,28 @@ public class TaskExecutionState implements java.io.Serializable {
 	 *        the execution state to be reported
 	 */
 	public TaskExecutionState(JobID jobID, ExecutionAttemptID executionId, ExecutionState executionState) {
-		this(jobID, executionId, executionState, null);
+		this(jobID, executionId, executionState, null, null);
 	}
-	
+
+	/**
+	 * Creates a new task execution state update, with an attached exception but no accumulators.
+	 *
+	 * @param jobID
+	 *        the ID of the job the task belongs to
+	 * @param executionId
+	 *        the ID of the task execution whose state is to be reported
+	 * @param executionState
+	 *        the execution state to be reported
+	 */
+	public TaskExecutionState(JobID jobID, ExecutionAttemptID executionId,
+							ExecutionState executionState, Throwable error) {
+		this(jobID, executionId, executionState, error, null);
+	}
+
 	/**
 	 * Creates a new task execution state update, with an attached exception.
-	 * 
+	 * This constructor may never throw an exception.
+	 *
 	 * @param jobID
 	 *        the ID of the job the task belongs to
 	 * @param executionId
@@ -77,11 +97,15 @@ public class TaskExecutionState implements java.io.Serializable {
 	 *        the execution state to be reported
 	 * @param error
 	 *        an optional error
+	 * @param accumulators
+	 *        The flink and user-defined accumulators which may be null.
 	 */
 	public TaskExecutionState(JobID jobID, ExecutionAttemptID executionId,
-								ExecutionState executionState, Throwable error) {
+			ExecutionState executionState, Throwable error,
+			AccumulatorSnapshot accumulators) {
 
-		if (jobID == null || executionId == null || executionState == null) {
+
+			if (jobID == null || executionId == null || executionState == null) {
 			throw new NullPointerException();
 		}
 
@@ -89,15 +113,38 @@ public class TaskExecutionState implements java.io.Serializable {
 		this.executionId = executionId;
 		this.executionState = executionState;
 		this.cachedError = error;
+		this.accumulators = accumulators;
 
 		if (error != null) {
+			byte[] serializedError;
 			try {
-				this.serializedError = InstantiationUtil.serializeObject(error);
+				serializedError = InstantiationUtil.serializeObject(error);
 			}
-			catch (IOException e) {
-				throw new RuntimeException("Error while serializing task exception", e);
+			catch (Throwable t) {
+				// could not serialize exception. send the stringified version instead
+				try {
+					this.cachedError = new Exception(ExceptionUtils.stringifyException(error));
+					serializedError = InstantiationUtil.serializeObject(this.cachedError);
+				}
+				catch (Throwable tt) {
+					// seems like we cannot do much to report the actual exception
+					// report a placeholder instead
+					try {
+						this.cachedError = new Exception("Cause is a '" + error.getClass().getName()
+								+ "' (failed to serialize or stringify)");
+						serializedError = InstantiationUtil.serializeObject(this.cachedError);
+					}
+					catch (Throwable ttt) {
+						// this should never happen unless the JVM is fubar.
+						// we just report the state without the error
+						this.cachedError = null;
+						serializedError = null;
+					}
+				}
 			}
-		} else {
+			this.serializedError = serializedError;
+		}
+		else {
 			this.serializedError = null;
 		}
 	}
@@ -155,6 +202,13 @@ public class TaskExecutionState implements java.io.Serializable {
 		return this.jobID;
 	}
 
+	/**
+	 * Gets flink and user-defined accumulators in serialized form.
+	 */
+	public AccumulatorSnapshot getAccumulators() {
+		return accumulators;
+	}
+
 	// --------------------------------------------------------------------------------------------
 
 	@Override
@@ -181,7 +235,7 @@ public class TaskExecutionState implements java.io.Serializable {
 	public String toString() {
 		return String.format("TaskState jobId=%s, executionId=%s, state=%s, error=%s", 
 				jobID, executionId, executionState,
-				cachedError == null ? "(null)"
-									: cachedError.getClass().getName() + ": " + cachedError.getMessage());
+				cachedError == null ? (serializedError == null ? "(null)" : "(serialized)")
+									: (cachedError.getClass().getName() + ": " + cachedError.getMessage()));
 	}
 }

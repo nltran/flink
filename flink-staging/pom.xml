@@ -25,7 +25,7 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-parent</artifactId>
-		<version>0.9-SNAPSHOT</version>
+		<version>0.10-SNAPSHOT</version>
 		<relativePath>..</relativePath>
 	</parent>
 
@@ -65,11 +65,28 @@ under the License.
 				<module>flink-tachyon</module>
 			</modules>
 		</profile>
-        <profile>
-            <id>include-tez</id>
-            <modules>
-                <module>flink-tez</module>
-            </modules>
-        </profile>
+		<profile>
+			<id>include-tez</id>
+			<modules>
+				<module>flink-tez</module>
+			</modules>
+		</profile>
+		<profile>
+			<id>scala-2.10</id>
+			<activation>
+
+				<property>
+					<!-- this is the default scala profile -->
+					<name>!scala-2.11</name>
+				</property>
+			</activation>
+			<properties>
+				<scala.version>2.10.4</scala.version>
+				<scala.binary.version>2.10</scala.binary.version>
+			</properties>
+			<modules>
+				<module>flink-scala-shell</module>
+			</modules>
+		</profile>
 	</profiles>
 </project>

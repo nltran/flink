@@ -17,7 +17,11 @@
 
 package org.apache.flink.streaming.api.operators.windowing;
 
+import org.apache.flink.api.common.functions.AbstractRichFunction;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.api.common.functions.util.FunctionUtils;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.WindowedDataStream;
 import org.apache.flink.streaming.api.functions.WindowMapFunction;
 import org.apache.flink.streaming.api.operators.StreamMap;
@@ -36,10 +40,11 @@ public class WindowMapper<IN, OUT> extends StreamMap<StreamWindow<IN>, StreamWin
 	public WindowMapper(WindowMapFunction<IN, OUT> mapper) {
 		super(new WindowMap<IN, OUT>(mapper));
 		this.mapper = mapper;
-		withoutInputCopy();
+		disableInputCopy();
 	}
 
-	private static class WindowMap<T, R> implements MapFunction<StreamWindow<T>, StreamWindow<R>> {
+	private static class WindowMap<T, R> extends AbstractRichFunction
+			implements MapFunction<StreamWindow<T>, StreamWindow<R>> {
 
 		private static final long serialVersionUID = 1L;
 		WindowMapFunction<T, R> mapper;
@@ -59,6 +64,31 @@ public class WindowMapper<IN, OUT> extends StreamMap<StreamWindow<IN>, StreamWin
 			return outputWindow;
 		}
 
+		// --------------------------------------------------------------------------------------------
+		//  Forwarding calls to the wrapped mapper
+		// --------------------------------------------------------------------------------------------
+
+		@Override
+		public void open(Configuration parameters) throws Exception {
+			FunctionUtils.openFunction(mapper, parameters);
+		}
+
+		@Override
+		public void close() throws Exception {
+			FunctionUtils.closeFunction(mapper);
+		}
+
+		@Override
+		public void setRuntimeContext(RuntimeContext t) {
+			FunctionUtils.setFunctionRuntimeContext(mapper, t);
+		}
+
+		@Override
+		public RuntimeContext getRuntimeContext() {
+			return FunctionUtils.getFunctionRuntimeContext(mapper, getRuntimeContext());
+		}
+
+		// streaming does not use iteration runtime context, so that is omitted
 	}
 
 }

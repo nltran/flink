@@ -19,7 +19,9 @@
 package org.apache.flink.runtime.testingUtils
 
 import akka.actor.{ActorRef, Props, ActorSystem}
+import akka.testkit.CallingThreadDispatcher
 import org.apache.flink.configuration.{ConfigConstants, Configuration}
+import org.apache.flink.runtime.StreamingMode
 import org.apache.flink.runtime.jobmanager.{MemoryArchivist, JobManager}
 import org.apache.flink.runtime.minicluster.FlinkMiniCluster
 import org.apache.flink.runtime.net.NetUtils
@@ -33,9 +35,27 @@ import org.apache.flink.runtime.taskmanager.TaskManager
  * @param singleActorSystem true if all actors shall be running in the same [[ActorSystem]],
  *                          otherwise false
  */
-class TestingCluster(userConfiguration: Configuration, singleActorSystem: Boolean = true)
-  extends FlinkMiniCluster(userConfiguration, singleActorSystem) {
+class TestingCluster(userConfiguration: Configuration,
+                     singleActorSystem: Boolean,
+                     synchronousDispatcher: Boolean,
+                     streamingMode: StreamingMode)
+  extends FlinkMiniCluster(userConfiguration,
+                           singleActorSystem,
+                           streamingMode) {
+  
 
+  def this(userConfiguration: Configuration,
+           singleActorSystem: Boolean,
+           synchronousDispatcher: Boolean)
+       = this(userConfiguration, singleActorSystem, synchronousDispatcher, StreamingMode.BATCH_ONLY)
+
+  def this(userConfiguration: Configuration, singleActorSystem: Boolean)
+       = this(userConfiguration, singleActorSystem, false)
+
+  def this(userConfiguration: Configuration) = this(userConfiguration, true, false)
+  
+  // --------------------------------------------------------------------------
+  
   override def generateConfiguration(userConfig: Configuration): Configuration = {
     val cfg = new Configuration()
     cfg.setString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, "localhost")
@@ -49,18 +69,41 @@ class TestingCluster(userConfiguration: Configuration, singleActorSystem: Boolea
 
   override def startJobManager(actorSystem: ActorSystem): ActorRef = {
 
-    val (instanceManager, scheduler, libraryCacheManager, _, accumulatorManager, _,
-    executionRetries, delayBetweenRetries,
-    timeout, archiveCount) = JobManager.createJobManagerComponents(configuration)
-
+    val (executionContext,
+      instanceManager,
+      scheduler,
+      libraryCacheManager,
+      _,
+      executionRetries,
+      delayBetweenRetries,
+      timeout,
+      archiveCount) = JobManager.createJobManagerComponents(configuration)
+    
     val testArchiveProps = Props(new MemoryArchivist(archiveCount) with TestingMemoryArchivist)
     val archive = actorSystem.actorOf(testArchiveProps, JobManager.ARCHIVE_NAME)
+    
+    val jobManagerProps = Props(
+      new JobManager(
+        configuration,
+        executionContext,
+        instanceManager,
+        scheduler,
+        libraryCacheManager,
+        archive,
+        executionRetries,
+        delayBetweenRetries,
+        timeout,
+        streamingMode)
+      with TestingJobManager)
 
-    val jobManagerProps = Props(new JobManager(configuration, instanceManager, scheduler,
-      libraryCacheManager, archive, accumulatorManager, None, executionRetries,
-      delayBetweenRetries, timeout) with TestingJobManager)
+    val dispatcherJobManagerProps = if (synchronousDispatcher) {
+      // disable asynchronous futures (e.g. accumulator update in Heartbeat)
+      jobManagerProps.withDispatcher(CallingThreadDispatcher.Id)
+    } else {
+      jobManagerProps
+    }
 
-    actorSystem.actorOf(jobManagerProps, JobManager.JOB_MANAGER_NAME)
+    actorSystem.actorOf(dispatcherJobManagerProps, JobManager.JOB_MANAGER_NAME)
   }
 
   override def startTaskManager(index: Int, system: ActorSystem) = {
@@ -72,12 +115,13 @@ class TestingCluster(userConfiguration: Configuration, singleActorSystem: Boolea
     } else {
       None
     }
-
+    
     TaskManager.startTaskManagerComponentsAndActor(configuration, system,
-                                                   HOSTNAME,
+                                                   hostname,
                                                    Some(tmActorName),
                                                    jobManagerPath,
                                                    numTaskManagers == 1,
+                                                   streamingMode,
                                                    classOf[TestingTaskManager])
   }
 }

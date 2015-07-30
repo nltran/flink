@@ -30,9 +30,9 @@ import org.apache.flink.api.common.PlanExecutor;
  */
 public class RemoteEnvironment extends ExecutionEnvironment {
 	
-	private final String host;
+	protected final String host;
 	
-	private final int port;
+	protected final int port;
 	
 	private final String[] jarFiles;
 	
@@ -67,7 +67,9 @@ public class RemoteEnvironment extends ExecutionEnvironment {
 		
 		PlanExecutor executor = PlanExecutor.createRemoteExecutor(host, port, jarFiles);
 		executor.setPrintStatusDuringExecution(p.getExecutionConfig().isSysoutLoggingEnabled());
-		return executor.executePlan(p);
+
+		this.lastJobExecutionResult = executor.executePlan(p);
+		return this.lastJobExecutionResult;
 	}
 	
 	@Override

@@ -19,7 +19,9 @@ package org.apache.flink.streaming.util.serialization;
 
 import java.io.Serializable;
 
-public interface DeserializationSchema<T> extends Serializable {
+import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
+
+public interface DeserializationSchema<T> extends Serializable, ResultTypeQueryable<T> {
 
 	/**
 	 * Deserializes the incoming data.

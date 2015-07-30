@@ -17,36 +17,34 @@
 
 package org.apache.flink.streaming.api.operators.windowing;
 
-import org.apache.flink.streaming.api.operators.ChainableStreamOperator;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.StreamWindow;
 import org.apache.flink.streaming.api.windowing.WindowEvent;
 import org.apache.flink.streaming.api.windowing.windowbuffer.WindowBuffer;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 /**
  * This operator manages the window buffers attached to the discretizers.
  */
-public class StreamWindowBuffer<T> extends ChainableStreamOperator<WindowEvent<T>, StreamWindow<T>> {
+public class StreamWindowBuffer<T>
+		extends AbstractStreamOperator<StreamWindow<T>>
+		implements OneInputStreamOperator<WindowEvent<T>, StreamWindow<T>> {
+
+	private static final long serialVersionUID = 1L;
 
 	protected WindowBuffer<T> buffer;
 
 	public StreamWindowBuffer(WindowBuffer<T> buffer) {
-		super(null);
 		this.buffer = buffer;
-		withoutInputCopy();
-	}
-
-	private static final long serialVersionUID = 1L;
-
-	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
-		}
+		setChainingStrategy(ChainingStrategy.FORCE_ALWAYS);
+		disableInputCopy();
 	}
 
 	@Override
-	protected void callUserFunction() throws Exception {
-		handleWindowEvent(nextObject);
+	public void processElement(StreamRecord<WindowEvent<T>> windowEvent) throws Exception {
+		handleWindowEvent(windowEvent.getValue());
 	}
 
 	protected void handleWindowEvent(WindowEvent<T> windowEvent, WindowBuffer<T> buffer)
@@ -56,7 +54,7 @@ public class StreamWindowBuffer<T> extends ChainableStreamOperator<WindowEvent<T
 		} else if (windowEvent.isEviction()) {
 			buffer.evict(windowEvent.getEviction());
 		} else if (windowEvent.isTrigger()) {
-			buffer.emitWindow(collector);
+			buffer.emitWindow(output);
 		}
 	}
 
@@ -64,4 +62,8 @@ public class StreamWindowBuffer<T> extends ChainableStreamOperator<WindowEvent<T
 		handleWindowEvent(windowEvent, buffer);
 	}
 
+	@Override
+	public void processWatermark(Watermark mark) throws Exception {
+		output.emitWatermark(mark);
+	}
 }

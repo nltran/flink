@@ -28,7 +28,9 @@ under the License.
 Start a YARN session with 4 Task Managers (each with 4 GB of Heapspace):
 
 ~~~bash
-wget {{ site.download_url_hadoop2 }}
+# get the hadoop2 package from the Flink download page at
+# {{ site.download_url }}
+curl -O <flink_hadoop2_download_url>
 tar xvzf flink-{{ site.version }}-bin-hadoop2.tgz
 cd flink-{{ site.version }}/
 ./bin/yarn-session.sh -n 4 -jm 1024 -tm 4096
@@ -41,10 +43,12 @@ Once the session has been started, you can submit jobs to the cluster using the 
 ## Quickstart: Run a Flink job on YARN
 
 ~~~bash
-wget {{ site.download_url_hadoop2 }}
+# get the hadoop2 package from the Flink download page at
+# {{ site.download_url }}
+curl -O <flink_hadoop2_download_url>
 tar xvzf flink-{{ site.version }}-bin-hadoop2.tgz
 cd flink-{{ site.version }}/
-./bin/flink -m yarn-cluster -yn 4 -yjm 1024 -ytm 4096 ./examples/flink-java-examples-{{ site.version }}-WordCount.jar
+./bin/flink run -m yarn-cluster -yn 4 -yjm 1024 -ytm 4096 ./examples/flink-java-examples-{{ site.version }}-WordCount.jar
 ~~~
 
 ## Apache Flink on Hadoop YARN using a YARN Session
@@ -56,7 +60,7 @@ Apache [Hadoop YARN](http://hadoop.apache.org/) is a cluster resource management
 - Apache Hadoop 2.2
 - HDFS (Hadoop Distributed File System) (or another distributed file system supported by Hadoop)
 
-If you have troubles using the Flink YARN client, have a look in the [FAQ section](faq.html).
+If you have troubles using the Flink YARN client, have a look in the [FAQ section]({{ site.baseurl }}/faq.html).
 
 ### Start Flink Session
 
@@ -96,10 +100,13 @@ Usage:
      -D <arg>                        Dynamic properties
      -d,--detached                   Start detached
      -jm,--jobManagerMemory <arg>    Memory for JobManager Container [in MB]
+     -nm,--name                      Set a custom name for the application on YARN
      -q,--query                      Display available YARN resources (memory, cores)
      -qu,--queue <arg>               Specify YARN queue.
      -s,--slots <arg>                Number of slots per TaskManager
+     -st,--streaming                 Start Flink in streaming mode
      -tm,--taskManagerMemory <arg>   Memory per TaskManager Container [in MB]
+
 ~~~
 
 Please note that the Client requires the `YARN_CONF_DIR` or `HADOOP_CONF_DIR` environment variable to be set to read the YARN and HDFS configuration.
@@ -141,7 +148,7 @@ Use the following command to submit a Flink program to the YARN cluster:
 ./bin/flink
 ~~~
 
-Please refer to the documentation of the [commandline client](cli.html).
+Please refer to the documentation of the [commandline client]({{ site.baseurl }}/apis/cli.html).
 
 The command will show you a help menu like this:
 
@@ -170,10 +177,10 @@ Use the *run* action to submit a job to YARN. The client is able to determine th
 **Example**
 
 ~~~bash
-wget -O apache-license-v2.txt http://www.apache.org/licenses/LICENSE-2.0.txt
+wget -O LICENSE-2.0.txt http://www.apache.org/licenses/LICENSE-2.0.txt
 hadoop fs -copyFromLocal LICENSE-2.0.txt hdfs:/// ...
 ./bin/flink run ./examples/flink-java-examples-{{site.version }}-WordCount.jar \
-        hdfs:///..../apache-license-v2.txt hdfs:///.../wordcount-result.txt
+        hdfs:///..../LICENSE-2.0.txt hdfs:///.../wordcount-result.txt
 ~~~
 
 If there is the following error, make sure that all TaskManagers started:

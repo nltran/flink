@@ -61,8 +61,8 @@ public class IncrementalLearningSkeleton {
 		}
 
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-		// env.setDegreeOfParallelism(1);
-		createSourceStreams(env);
+		trainingData = env.addSource(new FiniteTrainingDataSource());
+		newData = env.addSource(new FiniteNewDataSource());
 
 		// build new model on every second of new data
 		DataStream<Double[]> model = trainingData.window(Time.of(5000, new LinearTimestamp()))
@@ -90,41 +90,15 @@ public class IncrementalLearningSkeleton {
 	 * Feeds new data for newData. By default it is implemented as constantly
 	 * emitting the Integer 1 in a loop.
 	 */
-	public static class NewDataSource implements SourceFunction<Integer> {
-		private static final long serialVersionUID = 1L;
-		private static final int NEW_DATA_SLEEP_TIME = 1000;
-
-		@Override
-		public void run(Collector<Integer> collector) throws Exception {
-			while (true) {
-				collector.collect(getNewData());
-			}
-		}
-
-		private Integer getNewData() throws InterruptedException {
-			Thread.sleep(NEW_DATA_SLEEP_TIME);
-			return 1;
-		}
-		
-		@Override
-		public void cancel() {
-			// No cleanup needed
-		}
-	}
-
-	/**
-	 * Feeds new data for newData. By default it is implemented as constantly
-	 * emitting the Integer 1 in a loop.
-	 */
 	public static class FiniteNewDataSource implements SourceFunction<Integer> {
 		private static final long serialVersionUID = 1L;
 		private int counter;
 
 		@Override
-		public void run(Collector<Integer> collector) throws Exception {
+		public void run(SourceContext<Integer> ctx) throws Exception {
 			Thread.sleep(15);
 			while (counter < 50) {
-				collector.collect(getNewData());
+				ctx.collect(getNewData());
 			}
 		}
 
@@ -144,40 +118,12 @@ public class IncrementalLearningSkeleton {
 	 * Feeds new training data for the partial model builder. By default it is
 	 * implemented as constantly emitting the Integer 1 in a loop.
 	 */
-	public static class TrainingDataSource implements SourceFunction<Integer> {
-		private static final long serialVersionUID = 1L;
-		private static final int TRAINING_DATA_SLEEP_TIME = 10;
-
-		@Override
-		public void run(Collector<Integer> collector) throws Exception {
-			while (true) {
-				collector.collect(getTrainingData());
-			}
-
-		}
-
-		private Integer getTrainingData() throws InterruptedException {
-			Thread.sleep(TRAINING_DATA_SLEEP_TIME);
-			return 1;
-
-		}
-		
-		@Override
-		public void cancel() {
-			// No cleanup needed
-		}
-	}
-
-	/**
-	 * Feeds new training data for the partial model builder. By default it is
-	 * implemented as constantly emitting the Integer 1 in a loop.
-	 */
 	public static class FiniteTrainingDataSource implements SourceFunction<Integer> {
 		private static final long serialVersionUID = 1L;
 		private int counter = 0;
 
 		@Override
-		public void run(Collector<Integer> collector) throws Exception {
+		public void run(SourceContext<Integer> collector) throws Exception {
 			while (counter < 8200) {
 				collector.collect(getTrainingData());
 			}
@@ -288,13 +234,4 @@ public class IncrementalLearningSkeleton {
 		return true;
 	}
 
-	public static void createSourceStreams(StreamExecutionEnvironment env) {
-		if (fileOutput) {
-			trainingData = env.addSource(new FiniteTrainingDataSource());
-			newData = env.addSource(new FiniteNewDataSource());
-		} else {
-			trainingData = env.addSource(new TrainingDataSource());
-			newData = env.addSource(new NewDataSource());
-		}
-	}
 }

@@ -18,25 +18,25 @@
 package org.apache.flink.streaming.runtime.tasks;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.flink.streaming.api.collector.StreamOutput;
+import org.apache.flink.api.common.accumulators.Accumulator;
+import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
+import org.apache.flink.streaming.runtime.io.RecordWriterOutput;
 import org.apache.flink.streaming.runtime.io.BlockingQueueBroker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.util.StringUtils;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class StreamIterationHead<OUT> extends StreamTask<OUT, OUT> {
+public class StreamIterationHead<OUT> extends OneInputStreamTask<OUT, OUT> {
 
 	private static final Logger LOG = LoggerFactory.getLogger(StreamIterationHead.class);
 
-	private Collection<StreamOutput<?>> outputs;
 
-	private static int numSources;
-	private Integer iterationId;
 	@SuppressWarnings("rawtypes")
 	private BlockingQueue<StreamRecord> dataChannel;
 	private long iterationWaitTime;
@@ -44,22 +44,24 @@ public class StreamIterationHead<OUT> extends StreamTask<OUT, OUT> {
 
 	@SuppressWarnings("rawtypes")
 	public StreamIterationHead() {
-		numSources = newTask();
-		instanceID = numSources;
 		dataChannel = new ArrayBlockingQueue<StreamRecord>(1);
 	}
 
 	@Override
-	public void setInputsOutputs() {
-		outputHandler = new OutputHandler<OUT>(this);
-		outputs = outputHandler.getOutputs();
+	public void registerInputOutput() {
+		super.registerInputOutput();
 
-		iterationId = configuration.getIterationId();
+		final AccumulatorRegistry registry = getEnvironment().getAccumulatorRegistry();
+		Map<String, Accumulator<?, ?>> accumulatorMap = registry.getUserMap();
+
+		outputHandler = new OutputHandler<OUT>(this, accumulatorMap, outputHandler.reporter);
+
+		String iterationId = configuration.getIterationId();
 		iterationWaitTime = configuration.getIterationWaitTime();
 		shouldWait = iterationWaitTime > 0;
 
 		try {
-			BlockingQueueBroker.instance().handIn(iterationId.toString()+"-" 
+			BlockingQueueBroker.instance().handIn(iterationId+"-" 
 					+getEnvironment().getIndexInSubtaskGroup(), dataChannel);
 		} catch (Exception e) {
 			throw new RuntimeException(e);
@@ -70,9 +72,12 @@ public class StreamIterationHead<OUT> extends StreamTask<OUT, OUT> {
 	@SuppressWarnings("unchecked")
 	@Override
 	public void invoke() throws Exception {
+		isRunning = true;
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("Iteration source {} invoked with instance id {}", getName(), getInstanceID());
+			LOG.debug("Iteration source {} invoked", getName());
 		}
+
+		Collection<RecordWriterOutput<?>> outputs = outputHandler.getOutputs();
 
 		try {
 			StreamRecord<OUT> nextRecord;
@@ -86,25 +91,22 @@ public class StreamIterationHead<OUT> extends StreamTask<OUT, OUT> {
 				if (nextRecord == null) {
 					break;
 				}
-				for (StreamOutput<?> output : outputs) {
-					((StreamOutput<OUT>) output).collect(nextRecord.getObject());
+				for (RecordWriterOutput<?> output : outputs) {
+					((RecordWriterOutput<OUT>) output).collect(nextRecord);
 				}
 			}
 
-		} catch (Exception e) {
-			if (LOG.isErrorEnabled()) {
-				LOG.error("Iteration source failed due to: {}", StringUtils.stringifyException(e));
-			}
+		}
+		catch (Exception e) {
+			LOG.error("Iteration Head " + getEnvironment().getTaskNameWithSubtasks() + " failed", e);
+			
 			throw e;
-		} finally {
+		}
+		finally {
 			// Cleanup
+			isRunning = false;
 			outputHandler.flushOutputs();
 			clearBuffers();
 		}
-
-	}
-
-	@Override
-	protected void setOperator() {
 	}
 }

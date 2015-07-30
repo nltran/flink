@@ -17,7 +17,6 @@
 
 package org.apache.flink.streaming.api.datastream;
 
-import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.ClosureCleaner;
 import org.apache.flink.api.java.Utils;
@@ -28,14 +27,11 @@ import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
 import org.apache.flink.streaming.api.functions.co.CoMapFunction;
 import org.apache.flink.streaming.api.functions.co.CoReduceFunction;
 import org.apache.flink.streaming.api.functions.co.CoWindowFunction;
-import org.apache.flink.streaming.api.functions.co.RichCoMapFunction;
-import org.apache.flink.streaming.api.functions.co.RichCoReduceFunction;
 import org.apache.flink.streaming.api.graph.StreamGraph;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.operators.co.CoStreamFlatMap;
 import org.apache.flink.streaming.api.operators.co.CoStreamGroupedReduce;
 import org.apache.flink.streaming.api.operators.co.CoStreamMap;
-import org.apache.flink.streaming.api.operators.co.CoStreamOperator;
-import org.apache.flink.streaming.api.operators.co.CoStreamReduce;
 import org.apache.flink.streaming.api.operators.co.CoStreamWindow;
 import org.apache.flink.streaming.api.windowing.helper.SystemTimestamp;
 import org.apache.flink.streaming.api.windowing.helper.TimestampWrapper;
@@ -64,8 +60,12 @@ public class ConnectedDataStream<IN1, IN2> {
 	protected ConnectedDataStream(DataStream<IN1> input1, DataStream<IN2> input2) {
 		this.jobGraphBuilder = input1.streamGraph;
 		this.environment = input1.environment;
-		this.dataStream1 = input1.copy();
-		this.dataStream2 = input2.copy();
+		if (input1 != null) {
+			this.dataStream1 = input1.copy();
+		}
+		if (input2 != null) {
+			this.dataStream2 = input2.copy();
+		}
 
 		if ((input1 instanceof GroupedDataStream) && (input2 instanceof GroupedDataStream)) {
 			this.isGrouped = true;
@@ -148,7 +148,7 @@ public class ConnectedDataStream<IN1, IN2> {
 	 * @param keyPosition2
 	 *            The field used to compute the hashcode of the elements in the
 	 *            second input stream.
-	 * @return @return The transformed {@link ConnectedDataStream}
+	 * @return The grouped {@link ConnectedDataStream}
 	 */
 	public ConnectedDataStream<IN1, IN2> groupBy(int keyPosition1, int keyPosition2) {
 		return new ConnectedDataStream<IN1, IN2>(dataStream1.groupBy(keyPosition1),
@@ -165,7 +165,7 @@ public class ConnectedDataStream<IN1, IN2> {
 	 *            The fields used to group the first input stream.
 	 * @param keyPositions2
 	 *            The fields used to group the second input stream.
-	 * @return @return The transformed {@link ConnectedDataStream}
+	 * @return The grouped {@link ConnectedDataStream}
 	 */
 	public ConnectedDataStream<IN1, IN2> groupBy(int[] keyPositions1, int[] keyPositions2) {
 		return new ConnectedDataStream<IN1, IN2>(dataStream1.groupBy(keyPositions1),
@@ -178,7 +178,7 @@ public class ConnectedDataStream<IN1, IN2> {
 	 * expression is either the name of a public field or a getter method with
 	 * parentheses of the {@link DataStream}S underlying type. A dot can be used
 	 * to drill down into objects, as in {@code "field1.getInnerField2()" }.
-	 * 
+	 *
 	 * @param field1
 	 *            The grouping expression for the first input
 	 * @param field2
@@ -219,7 +219,7 @@ public class ConnectedDataStream<IN1, IN2> {
 	 *            The {@link KeySelector} used for grouping the first input
 	 * @param keySelector2
 	 *            The {@link KeySelector} used for grouping the second input
-	 * @return @return The transformed {@link ConnectedDataStream}
+	 * @return The partitioned {@link ConnectedDataStream}
 	 */
 	public ConnectedDataStream<IN1, IN2> groupBy(KeySelector<IN1, ?> keySelector1,
 			KeySelector<IN2, ?> keySelector2) {
@@ -228,13 +228,95 @@ public class ConnectedDataStream<IN1, IN2> {
 	}
 
 	/**
+	 * PartitionBy operation for connected data stream. Partitions the elements of
+	 * input1 and input2 according to keyPosition1 and keyPosition2.
+	 *
+	 * @param keyPosition1
+	 *            The field used to compute the hashcode of the elements in the
+	 *            first input stream.
+	 * @param keyPosition2
+	 *            The field used to compute the hashcode of the elements in the
+	 *            second input stream.
+	 * @return The partitioned {@link ConnectedDataStream}
+	 */
+	public ConnectedDataStream<IN1, IN2> partitionByHash(int keyPosition1, int keyPosition2) {
+		return new ConnectedDataStream<IN1, IN2>(dataStream1.partitionByHash(keyPosition1),
+				dataStream2.partitionByHash(keyPosition2));
+	}
+
+	/**
+	 * PartitionBy operation for connected data stream. Partitions the elements of
+	 * input1 and input2 according to keyPositions1 and keyPositions2.
+	 *
+	 * @param keyPositions1
+	 *            The fields used to group the first input stream.
+	 * @param keyPositions2
+	 *            The fields used to group the second input stream.
+	 * @return The partitioned {@link ConnectedDataStream}
+	 */
+	public ConnectedDataStream<IN1, IN2> partitionByHash(int[] keyPositions1, int[] keyPositions2) {
+		return new ConnectedDataStream<IN1, IN2>(dataStream1.partitionByHash(keyPositions1),
+				dataStream2.partitionByHash(keyPositions2));
+	}
+
+	/**
+	 * PartitionBy operation for connected data stream using key expressions. Partitions
+	 * the elements of input1 and input2 according to field1 and field2. A
+	 * field expression is either the name of a public field or a getter method
+	 * with parentheses of the {@link DataStream}s underlying type. A dot can be
+	 * used to drill down into objects, as in {@code "field1.getInnerField2()" }
+	 *
+	 * @param field1
+	 *            The partitioning expressions for the first input
+	 * @param field2
+	 *            The partitioning expressions for the second input
+	 * @return The partitioned {@link ConnectedDataStream}
+	 */
+	public ConnectedDataStream<IN1, IN2> partitionByHash(String field1, String field2) {
+		return new ConnectedDataStream<IN1, IN2>(dataStream1.partitionByHash(field1),
+				dataStream2.partitionByHash(field2));
+	}
+
+	/**
+	 * PartitionBy operation for connected data stream using key expressions. Partitions
+	 * the elements of input1 and input2 according to fields1 and fields2. A
+	 * field expression is either the name of a public field or a getter method
+	 * with parentheses of the {@link DataStream}s underlying type. A dot can be
+	 * used to drill down into objects, as in {@code "field1.getInnerField2()" }
+	 *
+	 * @param fields1
+	 *            The partitioning expressions for the first input
+	 * @param fields2
+	 *            The partitioning expressions for the second input
+	 * @return The partitioned {@link ConnectedDataStream}
+	 */
+	public ConnectedDataStream<IN1, IN2> partitionByHash(String[] fields1, String[] fields2) {
+		return new ConnectedDataStream<IN1, IN2>(dataStream1.partitionByHash(fields1),
+				dataStream2.partitionByHash(fields2));
+	}
+
+	/**
+	 * PartitionBy operation for connected data stream. Partitions the elements of
+	 * input1 and input2 using keySelector1 and keySelector2.
+	 *
+	 * @param keySelector1
+	 *            The {@link KeySelector} used for partitioning the first input
+	 * @param keySelector2
+	 *            The {@link KeySelector} used for partitioning the second input
+	 * @return @return The partitioned {@link ConnectedDataStream}
+	 */
+	public ConnectedDataStream<IN1, IN2> partitionByHash(KeySelector<IN1, ?> keySelector1,
+														KeySelector<IN2, ?> keySelector2) {
+		return new ConnectedDataStream<IN1, IN2>(dataStream1.partitionByHash(keySelector1),
+				dataStream2.partitionByHash(keySelector2));
+	}
+
+	/**
 	 * Applies a CoMap transformation on a {@link ConnectedDataStream} and maps
 	 * the output to a common type. The transformation calls a
 	 * {@link CoMapFunction#map1} for each element of the first input and
 	 * {@link CoMapFunction#map2} for each element of the second input. Each
-	 * CoMapFunction call returns exactly one element. The user can also extend
-	 * {@link RichCoMapFunction} to gain access to other features provided by
-	 * the {@link RichFuntion} interface.
+	 * CoMapFunction call returns exactly one element.
 	 * 
 	 * @param coMapper
 	 *            The CoMapFunction used to jointly transform the two input
@@ -258,9 +340,7 @@ public class ConnectedDataStream<IN1, IN2> {
 	 * {@link CoFlatMapFunction#flatMap1} for each element of the first input
 	 * and {@link CoFlatMapFunction#flatMap2} for each element of the second
 	 * input. Each CoFlatMapFunction call returns any number of elements
-	 * including none. The user can also extend {@link RichFlatMapFunction} to
-	 * gain access to other features provided by the {@link RichFuntion}
-	 * interface.
+	 * including none.
 	 * 
 	 * @param coFlatMapper
 	 *            The CoFlatMapFunction used to jointly transform the two input
@@ -279,15 +359,9 @@ public class ConnectedDataStream<IN1, IN2> {
 	}
 
 	/**
-	 * Applies a reduce transformation on a {@link ConnectedDataStream} and maps
-	 * the outputs to a common type. If the {@link ConnectedDataStream} is
-	 * batched or windowed then the reduce transformation is applied on every
-	 * sliding batch/window of the data stream. If the connected data stream is
-	 * grouped then the reducer is applied on every group of elements sharing
-	 * the same key. This type of reduce is much faster than reduceGroup since
-	 * the reduce function can be applied incrementally. The user can also
-	 * extend the {@link RichCoReduceFunction} to gain access to other features
-	 * provided by the {@link RichFuntion} interface.
+	 * Applies a reduce transformation on a grouped{@link ConnectedDataStream} 
+	 * and maps the outputs to a common type. The reducer is applied on every 
+	 * group of elements sharing the same key. 
 	 * 
 	 * @param coReducer
 	 *            The {@link CoReduceFunction} that will be called for every
@@ -373,16 +447,15 @@ public class ConnectedDataStream<IN1, IN2> {
 
 	}
 
-	protected <OUT> CoStreamOperator<IN1, IN2, OUT> getReduceOperator(
+	protected <OUT> TwoInputStreamOperator<IN1, IN2, OUT> getReduceOperator(
 			CoReduceFunction<IN1, IN2, OUT> coReducer) {
-		CoStreamReduce<IN1, IN2, OUT> operator;
 		if (isGrouped) {
-			operator = new CoStreamGroupedReduce<IN1, IN2, OUT>(clean(coReducer), keySelector1,
+			return new CoStreamGroupedReduce<IN1, IN2, OUT>(clean(coReducer), keySelector1,
 					keySelector2);
 		} else {
-			operator = new CoStreamReduce<IN1, IN2, OUT>(clean(coReducer));
+			throw new UnsupportedOperationException(
+					"Reduce can only be applied on grouped streams.");
 		}
-		return operator;
 	}
 
 	public <OUT> SingleOutputStreamOperator<OUT, ?> addGeneralWindowCombine(
@@ -403,11 +476,11 @@ public class ConnectedDataStream<IN1, IN2> {
 	}
 
 	public <OUT> SingleOutputStreamOperator<OUT, ?> transform(String functionName,
-			TypeInformation<OUT> outTypeInfo, CoStreamOperator<IN1, IN2, OUT> operator) {
+			TypeInformation<OUT> outTypeInfo, TwoInputStreamOperator<IN1, IN2, OUT> operator) {
 
 		@SuppressWarnings({ "unchecked", "rawtypes" })
 		SingleOutputStreamOperator<OUT, ?> returnStream = new SingleOutputStreamOperator(
-				environment, functionName, outTypeInfo, operator);
+				environment, outTypeInfo, operator);
 
 		dataStream1.streamGraph.addCoOperator(returnStream.getId(), operator, getType1(),
 				getType2(), outTypeInfo, functionName);

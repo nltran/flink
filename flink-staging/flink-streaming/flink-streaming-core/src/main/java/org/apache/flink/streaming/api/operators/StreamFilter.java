@@ -18,30 +18,27 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public class StreamFilter<IN> extends ChainableStreamOperator<IN, IN> {
+public class StreamFilter<IN> extends AbstractUdfStreamOperator<IN, FilterFunction<IN>> implements OneInputStreamOperator<IN, IN> {
 
 	private static final long serialVersionUID = 1L;
 
-	private boolean collect;
-
 	public StreamFilter(FilterFunction<IN> filterFunction) {
 		super(filterFunction);
+		chainingStrategy = ChainingStrategy.ALWAYS;
 	}
 
 	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
+	public void processElement(StreamRecord<IN> element) throws Exception {
+		if (userFunction.filter(element.getValue())) {
+			output.collect(element);
 		}
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	protected void callUserFunction() throws Exception {
-		collect = ((FilterFunction<IN>) userFunction).filter(nextObject);
-		if (collect) {
-			collector.collect(nextObject);
-		}
+	public void processWatermark(Watermark mark) throws Exception {
+		output.emitWatermark(mark);
 	}
 }

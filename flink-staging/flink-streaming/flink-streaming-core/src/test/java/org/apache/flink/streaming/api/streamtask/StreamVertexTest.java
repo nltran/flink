@@ -37,7 +37,6 @@ import org.apache.flink.streaming.api.functions.co.CoMapFunction;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.util.TestStreamEnvironment;
-import org.apache.flink.util.Collector;
 import org.junit.Test;
 
 public class StreamVertexTest {
@@ -49,17 +48,18 @@ public class StreamVertexTest {
 
 		private Tuple1<Integer> tuple = new Tuple1<Integer>(0);
 
+		private int i = 0;
+
 		@Override
-		public void run(Collector<Tuple1<Integer>> collector) throws Exception {
+		public void run(SourceContext<Tuple1<Integer>> ctx) throws Exception {
 			for (int i = 0; i < 10; i++) {
 				tuple.f0 = i;
-				collector.collect(tuple);
+				ctx.collect(tuple);
 			}
 		}
 
 		@Override
 		public void cancel() {
-			// No cleanup needed
 		}
 	}
 

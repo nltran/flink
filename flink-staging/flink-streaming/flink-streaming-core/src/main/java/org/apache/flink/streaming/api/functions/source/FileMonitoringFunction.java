@@ -28,7 +28,6 @@ import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.util.Collector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,11 +48,10 @@ public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Lon
 	private long interval;
 	private WatchType watchType;
 
-	private FileSystem fileSystem;
 	private Map<String, Long> offsetOfFiles;
 	private Map<String, Long> modificationTimes;
 
-	private volatile boolean isRunning = false;
+	private volatile boolean isRunning = true;
 
 	public FileMonitoringFunction(String path, long interval, WatchType watchType) {
 		this.path = path;
@@ -64,16 +62,15 @@ public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Lon
 	}
 
 	@Override
-	public void run(Collector<Tuple3<String, Long, Long>> collector) throws Exception {
-		isRunning = true;
-		fileSystem = FileSystem.get(new URI(path));
+	public void run(SourceContext<Tuple3<String, Long, Long>> ctx) throws Exception {
+		FileSystem fileSystem = FileSystem.get(new URI(path));
 
 		while (isRunning) {
-			List<String> files = listNewFiles();
+			List<String> files = listNewFiles(fileSystem);
 			for (String filePath : files) {
 				if (watchType == WatchType.ONLY_NEW_FILES
 						|| watchType == WatchType.REPROCESS_WITH_APPENDED) {
-					collector.collect(new Tuple3<String, Long, Long>(filePath, 0L, -1L));
+					ctx.collect(new Tuple3<String, Long, Long>(filePath, 0L, -1L));
 					offsetOfFiles.put(filePath, -1L);
 				} else if (watchType == WatchType.PROCESS_ONLY_APPENDED) {
 					long offset = 0;
@@ -82,7 +79,7 @@ public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Lon
 						offset = offsetOfFiles.get(filePath);
 					}
 
-					collector.collect(new Tuple3<String, Long, Long>(filePath, offset, fileSize));
+					ctx.collect(new Tuple3<String, Long, Long>(filePath, offset, fileSize));
 					offsetOfFiles.put(filePath, fileSize);
 
 					LOG.info("File processed: {}, {}, {}", filePath, offset, fileSize);
@@ -93,7 +90,7 @@ public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Lon
 		}
 	}
 
-	private List<String> listNewFiles() throws IOException {
+	private List<String> listNewFiles(FileSystem fileSystem) throws IOException {
 		List<String> files = new ArrayList<String>();
 
 		FileStatus[] statuses = fileSystem.listStatus(new Path(path));
@@ -118,11 +115,7 @@ public class FileMonitoringFunction implements SourceFunction<Tuple3<String, Lon
 			return true;
 		} else {
 			Long lastModification = modificationTimes.get(fileName);
-			if (lastModification == null) {
-				return false;
-			} else {
-				return lastModification >= modificationTime;
-			}
+			return lastModification != null && lastModification >= modificationTime;
 		}
 	}
 

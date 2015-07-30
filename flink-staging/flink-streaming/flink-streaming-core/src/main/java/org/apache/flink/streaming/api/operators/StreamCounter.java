@@ -17,28 +17,26 @@
 
 package org.apache.flink.streaming.api.operators;
 
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public class StreamCounter<IN> extends ChainableStreamOperator<IN, Long> {
+public class StreamCounter<IN> extends AbstractStreamOperator<Long> implements OneInputStreamOperator<IN, Long> {
+
 	private static final long serialVersionUID = 1L;
 
-	Long count = 0L;
+	private Long count = 0L;
 
 	public StreamCounter() {
-		super(null);
+		chainingStrategy = ChainingStrategy.ALWAYS;
 	}
 
 	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			collector.collect(++count);
-		}
+	public void processElement(StreamRecord<IN> element) {
+		output.collect(element.replace(++count));
 	}
 
 	@Override
-	public void collect(IN record) {
-		if (isRunning) {
-			collector.collect(++count);
-		}
+	public void processWatermark(Watermark mark) throws Exception {
+		output.emitWatermark(mark);
 	}
-
 }

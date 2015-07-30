@@ -36,7 +36,11 @@ steps below.
 ## Install Google Cloud SDK
 
 Please follow the instructions on how to setup the
-[Google Cloud SDK](https://cloud.google.com/sdk/).
+[Google Cloud SDK](https://cloud.google.com/sdk/). In particular, make sure to
+authenticate with Google Cloud using the following command:
+
+    gcloud auth login
+
 
 ## Install bdutil
 
@@ -58,7 +62,6 @@ staging files. A new bucket can be created with gsutil:
 
     gsutil mb gs://<bucket_name>
 
-
 ## Adapt the bdutil config
 
 To deploy Flink with bdutil, adapt at least the following variables in
@@ -68,12 +71,18 @@ bdutil_env.sh.
     PROJECT="<compute_engine_project_name>"
     NUM_WORKERS=<number_of_workers>
 
+    # set this to 'n1-standard-2' if you're using the free trial
+    GCE_MACHINE_TYPE="<gce_machine_type>"
+
+    # for example: "europe-west1-d"
+    GCE_ZONE="<gce_zone>"
+
 ## Adapt the Flink config
 
 bdutil's Flink extension handles the configuration for you. You may additionally
 adjust configuration variables in `extensions/flink/flink_env.sh`. If you want
 to make further configuration, please take a look at
-[configuring Flink](config.md). You will have to restart Flink after changing
+[configuring Flink](config.html). You will have to restart Flink after changing
 its configuration using `bin/stop-cluster` and `bin/start-cluster`.
 
 ## Bring up a cluster with Flink
@@ -87,3 +96,9 @@ To bring up the Flink cluster on Google Compute Engine, execute:
     ./bdutil shell
     cd /home/hadoop/flink-install/bin
     ./flink run ../examples/flink-java-examples-*-WordCount.jar gs://dataflow-samples/shakespeare/othello.txt gs://<bucket_name>/output
+
+## Shut down your cluster
+
+Shutting down a cluster is as simple as executing
+
+    ./bdutil -e extensions/flink/flink_env.sh delete

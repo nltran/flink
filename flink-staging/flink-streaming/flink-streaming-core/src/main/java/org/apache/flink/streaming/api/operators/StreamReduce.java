@@ -18,8 +18,12 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-public class StreamReduce<IN> extends ChainableStreamOperator<IN, IN> {
+public class StreamReduce<IN> extends AbstractUdfStreamOperator<IN, ReduceFunction<IN>>
+		implements OneInputStreamOperator<IN, IN> {
+
 	private static final long serialVersionUID = 1L;
 
 	private IN currentValue;
@@ -27,27 +31,24 @@ public class StreamReduce<IN> extends ChainableStreamOperator<IN, IN> {
 	public StreamReduce(ReduceFunction<IN> reducer) {
 		super(reducer);
 		currentValue = null;
+
+		chainingStrategy = ChainingStrategy.ALWAYS;
 	}
 
 	@Override
-	public void run() throws Exception {
-		while (isRunning && readNext() != null) {
-			callUserFunctionAndLogException();
-		}
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	protected void callUserFunction() throws Exception {
+	public void processElement(StreamRecord<IN> element) throws Exception {
 
 		if (currentValue != null) {
-			currentValue = ((ReduceFunction<IN>) userFunction).reduce(copy(currentValue), nextObject);
+			currentValue = userFunction.reduce(currentValue, element.getValue());
 		} else {
-			currentValue = nextObject;
+			currentValue = element.getValue();
 
 		}
-		collector.collect(currentValue);
-
+		output.collect(element.replace(currentValue));
 	}
 
+	@Override
+	public void processWatermark(Watermark mark) throws Exception {
+		output.emitWatermark(mark);
+	}
 }
