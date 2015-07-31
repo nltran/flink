@@ -36,8 +36,6 @@ under the License.
 	<modules>
 		<module>flink-quickstart-java</module>
 		<module>flink-quickstart-scala</module>
-        <module>../ssp-quickjob</module>
-		<!--<module>../fw-ssp</module>-->
     </modules>
 	<build>
 		<extensions>
