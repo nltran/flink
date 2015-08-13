@@ -195,13 +195,15 @@ public class OperatorTranslation {
 		iterationOperator.setMaximumNumberOfIterations(iterationHead.getMaxIterations());
 		iterationOperator.setInput(translate(iterationHead.getInput()));
 
-		if(iterationHead.getStrategy().equals(IterationStrategy.PLAIN)) {
-			iterationOperator.setStrategy(BulkIterationStrategy.PLAIN);
-		}
-		else if (iterationHead.getStrategy().equals(IterationStrategy.SSP)) {
-			iterationOperator.setStrategy(BulkIterationStrategy.SSP);
-			iterationOperator.setSlack(iterationHead.getSlack());
-		}
+//		if(iterationHead.getStrategy().equals(IterationStrategy.PLAIN)) {
+//			iterationOperator.setStrategy(BulkIterationStrategy.PLAIN);
+//		}
+//		else if (iterationHead.getStrategy().equals(IterationStrategy.SSP)) {
+//			iterationOperator.setStrategy(BulkIterationStrategy.SSP);
+//			iterationOperator.setSlack(iterationHead.getSlack());
+//		}
+
+		iterationOperator.setSlack(iterationHead.getSlack());
 
 		iterationOperator.getAggregators().addAll(iterationHead.getAggregators());
 		

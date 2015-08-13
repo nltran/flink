@@ -983,7 +983,7 @@ public abstract class DataSet<T> {
 	 * @see org.apache.flink.api.java.operators.IterativeDataSet
 	 */
 	public IterativeDataSet<T> iterateWithSSP(int maxIterations, int slack) {
-		return new IterativeDataSet<T>(getExecutionEnvironment(), getType(), this, maxIterations, IterationStrategy.SSP, slack);
+		return new IterativeDataSet<T>(getExecutionEnvironment(), getType(), this, maxIterations, slack);
 	}
 	
 	/**

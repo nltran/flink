@@ -1016,7 +1016,6 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
         javaSet.getType,
         javaSet,
         maxIterations,
-        IterationStrategy.SSP,
         slack)
 
     val resultSet = stepFunction(wrap(iterativeSet))
@@ -1070,7 +1069,6 @@ class DataSet[T: ClassTag](set: JavaDataSet[T]) {
         javaSet.getType,
         javaSet,
         maxIterations,
-        IterationStrategy.SSP,
         slack)
 
     val (resultSet, terminationCriterion) = stepFunction(wrap(iterativeSet))

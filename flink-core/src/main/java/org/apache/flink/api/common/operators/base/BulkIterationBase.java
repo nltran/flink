@@ -52,7 +52,7 @@ public class BulkIterationBase<T> extends SingleInputOperator<T, T, AbstractRich
 	
 	private static String DEFAULT_NAME = "<Unnamed Bulk Iteration>";
 
-	private static BulkIterationStrategy DEFAULT_ITERATION_STRATEGY = BulkIterationStrategy.PLAIN;
+//	private static BulkIterationStrategy DEFAULT_ITERATION_STRATEGY = BulkIterationStrategy.PLAIN;
 	
 	public static final String TERMINATION_CRITERION_AGGREGATOR_NAME = "terminationCriterion.aggregator";
 
@@ -64,11 +64,11 @@ public class BulkIterationBase<T> extends SingleInputOperator<T, T, AbstractRich
 	
 	private int numberOfIterations = -1;
 
-	private int slack = -1;
+	private int slack = 0;
 	
 	protected Operator<?> terminationCriterion;
 
-	private BulkIterationStrategy strategy = DEFAULT_ITERATION_STRATEGY;
+//	private BulkIterationStrategy strategy = DEFAULT_ITERATION_STRATEGY;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -89,13 +89,13 @@ public class BulkIterationBase<T> extends SingleInputOperator<T, T, AbstractRich
 
 	// --------------------------------------------------------------------------------------------
 
-	public BulkIterationStrategy getStrategy() {
-		return strategy;
-	}
+//	public BulkIterationStrategy getStrategy() {
+//		return strategy;
+//	}
 
-	public void setStrategy(BulkIterationStrategy strategy) {
-		this.strategy = strategy;
-	}
+//	public void setStrategy(BulkIterationStrategy strategy) {
+//		this.strategy = strategy;
+//	}
 
 	public int getSlack() {
 		return slack;

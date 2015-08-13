@@ -38,7 +38,7 @@ import org.apache.flink.types.Value;
  */
 public class IterativeDataSet<T> extends SingleInputOperator<T, T, IterativeDataSet<T>> {
 
-	private final IterationStrategy strategy;
+//	private final IterationStrategy strategy;
 
 	private final int slack;
 
@@ -54,14 +54,14 @@ public class IterativeDataSet<T> extends SingleInputOperator<T, T, IterativeData
 	public IterativeDataSet(ExecutionEnvironment context, TypeInformation<T> type, DataSet<T> input, int maxIterations) {
 		super(input, type);
 		this.maxIterations = maxIterations;
-		this.strategy = IterationStrategy.PLAIN;
-		this.slack = -1;
+//		this.strategy = IterationStrategy.PLAIN;
+		this.slack = 0;
 	}
 
-	public IterativeDataSet(ExecutionEnvironment context, TypeInformation<T> type, DataSet<T> input, int maxIterations, IterationStrategy strategy, int slack) {
+	public IterativeDataSet(ExecutionEnvironment context, TypeInformation<T> type, DataSet<T> input, int maxIterations, int slack) {
 		super(input, type);
 		this.maxIterations = maxIterations;
-		this.strategy = strategy;
+//		this.strategy = strategy;
 		this.slack = slack;
 	}
 
@@ -73,9 +73,9 @@ public class IterativeDataSet<T> extends SingleInputOperator<T, T, IterativeData
 	 * @return The iteration strategy: plain or Stale Synchronous Paralllel
 	 *
 	 */
-	public IterationStrategy getStrategy() {
-		return strategy;
-	}
+//	public IterationStrategy getStrategy() {
+//		return strategy;
+//	}
 
 	/**
 	 * Returns the slack used in Stale Synchronous Parallel iterations
